@@ -94,6 +94,7 @@ export function getPortAbsPos(node, portId) {
 }
 
 // ─── Open ports (для проверки топологии) ────────────────────────────────────
+// out-порт радиатора не считается ошибкой — радиатор является терминальным узлом
 export function getOpenPorts(nodes, edges) {
   const used = new Set(edges.flatMap(e => [
     `${e.fromNodeId}:${e.fromPortId}`,
@@ -105,6 +106,8 @@ export function getOpenPorts(nodes, edges) {
     if (!config) return;
     Object.entries(config).forEach(([portId]) => {
       if (!used.has(`${node.id}:${portId}`)) {
+        // out-порт радиатора разрешено оставлять свободным
+        if (node.type === 'radiator' && portId === 'out') return;
         open.push({ nodeId: node.id, portId });
       }
     });
@@ -138,7 +141,8 @@ export function validateTopology(nodes, edges) {
   const radiators = nodes.filter(n => n.type === 'radiator');
   if (radiators.length === 0) { errors.push('Добавьте хотя бы один радиатор.'); }
 
-  // 4. BFS от насоса — проверяем что все концевые узлы (нет исходящих рёбер) = радиаторы
+  // 4. BFS от насоса — проверяем что все концевые узлы = радиаторы
+  // (считаем концевым узел, у которого нет исходящих рёбер ИЛИ у радиатора свободен out-порт)
   if (openPorts.length === 0 && radiators.length > 0) {
     const adjOut = {};
     nodes.forEach(n => (adjOut[n.id] = []));
@@ -150,12 +154,12 @@ export function validateTopology(nodes, edges) {
       const id = queue.shift();
       if (visited.has(id)) continue;
       visited.add(id);
+      const node = nodeMap[id];
       const outs = adjOut[id] || [];
-      if (outs.length === 0) {
-        // концевой узел — должен быть радиатором
-        if (nodeMap[id]?.type !== 'radiator') {
-          errors.push(`Ветка заканчивается не радиатором (${id}).`);
-        }
+      // Терминальный: нет исходящих рёбер, либо это радиатор (out может быть свободен)
+      const isTerminal = outs.length === 0 || node?.type === 'radiator';
+      if (isTerminal && node?.type !== 'radiator') {
+        errors.push(`Ветка заканчивается не радиатором (${id}).`);
       }
       outs.forEach(nid => !visited.has(nid) && queue.push(nid));
     }

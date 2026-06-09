@@ -181,9 +181,15 @@ export default function GraphCanvas({
 
   const handleWheel = useCallback((e) => {
     e.preventDefault();
-    const { x, y } = getSVG(e);
-    const s = Math.max(0.2, Math.min(4, vp.scale * (e.deltaY > 0 ? 0.9 : 1.1)));
-    setVp(v => ({ x: x - (x-v.x)*(s/v.scale), y: y - (y-v.y)*(s/v.scale), scale: s }));
+    // Трекпад: если ctrlKey — зум, иначе — панорамирование
+    if (e.ctrlKey || e.metaKey) {
+      const { x, y } = getSVG(e);
+      const s = Math.max(0.2, Math.min(4, vp.scale * (e.deltaY > 0 ? 0.9 : 1.1)));
+      setVp(v => ({ x: x - (x - v.x) * (s / v.scale), y: y - (y - v.y) * (s / v.scale), scale: s }));
+    } else {
+      // Два пальца на трекпаде → панорамирование
+      setVp(v => ({ ...v, x: v.x - e.deltaX, y: v.y - e.deltaY }));
+    }
   }, [vp]);
 
   const handleMouseDown = useCallback((e) => {
