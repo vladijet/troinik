@@ -7,6 +7,7 @@ import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import ScrollToTop from './components/ScrollToTop';
 import Configurator from './pages/Configurator';
+import PipeCalculator from './pages/PipeCalculator';
 // Add page imports here
 
 const AuthenticatedApp = () => {
@@ -35,7 +36,8 @@ const AuthenticatedApp = () => {
   // Render the main app
   return (
     <Routes>
-      <Route path="/" element={<Configurator />} />
+      <Route path="/" element={<PipeCalculator />} />
+      <Route path="/configurator" element={<Configurator />} />
       <Route path="*" element={<PageNotFound />} />
     </Routes>
   );
