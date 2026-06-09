@@ -1,85 +1,172 @@
-import { Trash2, Info, AlertCircle } from 'lucide-react';
+import { Trash2, Info, AlertCircle, RotateCw } from 'lucide-react';
 import { useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { ELEMENT_TYPES } from './elementConfig';
+import { COLORS } from './isoUtils';
 
-function ResultRow({ label, value, unit, color = 'text-emerald-700' }) {
-  if (value == null) return null;
+const dark = {
+  bg: '#0f172a',
+  card: '#1e293b',
+  border: '#1e3a5f',
+  text: '#94a3b8',
+  textBright: '#e2e8f0',
+  textMuted: '#475569',
+  accent: '#3b82f6',
+  success: '#34d399',
+  warn: '#fbbf24',
+  danger: '#f87171',
+};
+
+function Field({ label, children }) {
   return (
-    <div className="flex justify-between items-center text-xs">
-      <span className="text-slate-500">{label}</span>
-      <span className={`font-mono font-semibold ${color}`}>{value} {unit}</span>
+    <div className="space-y-1">
+      <label style={{ fontSize: 10, color: dark.textMuted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+        {label}
+      </label>
+      {children}
     </div>
   );
 }
 
-export default function Inspector({ element, results, onUpdate, onDelete }) {
+function StyledInput({ ...props }) {
+  return (
+    <input
+      {...props}
+      style={{
+        width: '100%', height: 32, padding: '0 8px',
+        background: dark.bg, border: `1px solid ${dark.border}`,
+        borderRadius: 6, color: dark.textBright, fontSize: 12,
+        outline: 'none',
+        ...props.style,
+      }}
+    />
+  );
+}
+
+function ResultRow({ label, value, unit, color }) {
+  if (value == null) return null;
+  return (
+    <div className="flex justify-between items-center" style={{ fontSize: 11 }}>
+      <span style={{ color: dark.textMuted }}>{label}</span>
+      <span style={{ fontFamily: 'monospace', fontWeight: 700, color: color || dark.success }}>
+        {value} <span style={{ color: dark.textMuted, fontWeight: 400 }}>{unit}</span>
+      </span>
+    </div>
+  );
+}
+
+export default function Inspector({ element, results, onUpdate, onDelete, onRotate }) {
   const [flowWarning, setFlowWarning] = useState(false);
 
   if (!element) {
     return (
       <div className="p-4 flex flex-col items-center justify-center h-full text-center gap-2">
-        <Info className="w-8 h-8 text-slate-300" />
-        <p className="text-xs text-slate-400">Выберите элемент на схеме для редактирования его параметров</p>
+        <Info className="w-8 h-8" style={{ color: dark.textMuted }} />
+        <p style={{ fontSize: 11, color: dark.textMuted }}>
+          Выберите элемент на схеме для редактирования параметров
+        </p>
       </div>
     );
   }
 
   const config = ELEMENT_TYPES[element.type];
+  const c = COLORS[element.type] || COLORS.pipe;
 
   return (
-    <div className="p-3 space-y-4">
-      <div className="flex justify-between items-center">
+    <div className="p-3 space-y-3" style={{ color: dark.text }}>
+      {/* Header */}
+      <div className="flex justify-between items-start">
         <div>
-          <h3 className="font-semibold text-sm">{config?.label}</h3>
-          <p className="text-[10px] text-slate-400">{element.id}</p>
+          <div className="flex items-center gap-2">
+            <div style={{ width: 10, height: 10, borderRadius: 2, background: c.stroke }} />
+            <span style={{ fontWeight: 700, fontSize: 13, color: dark.textBright }}>
+              {config?.label}
+            </span>
+          </div>
+          <p style={{ fontSize: 9, color: dark.textMuted, marginTop: 2 }}>{element.id}</p>
         </div>
-        {element.type !== 'pump' && (
-          <Button variant="ghost" size="icon" onClick={onDelete} className="text-red-400 hover:text-red-600 h-7 w-7">
-            <Trash2 className="w-3.5 h-3.5" />
-          </Button>
-        )}
+        <div className="flex gap-1">
+          {element.type !== 'pump' && onRotate && (
+            <button
+              onClick={() => onRotate(element.id)}
+              title="Повернуть на 90°"
+              style={{
+                width: 28, height: 28, borderRadius: 6,
+                background: dark.card, border: `1px solid ${dark.border}`,
+                color: dark.accent, cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}
+            >
+              <RotateCw size={14} />
+            </button>
+          )}
+          {element.type !== 'pump' && (
+            <button
+              onClick={onDelete}
+              style={{
+                width: 28, height: 28, borderRadius: 6,
+                background: dark.card, border: `1px solid ${dark.border}`,
+                color: dark.danger, cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}
+            >
+              <Trash2 size={14} />
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* Properties */}
+      <div style={{ height: 1, background: dark.border }} />
+
+      {/* Rotation info */}
+      {element.type !== 'pump' && (
+        <div style={{
+          fontSize: 10, color: dark.textMuted,
+          background: dark.card, borderRadius: 6, padding: '4px 8px',
+          border: `1px solid ${dark.border}`, display: 'flex', justifyContent: 'space-between'
+        }}>
+          <span>Поворот</span>
+          <span style={{ color: dark.accent, fontWeight: 700 }}>{element.rotation || 0}°</span>
+        </div>
+      )}
+
+      {/* Pipe props */}
       {element.type === 'pipe' && (
-        <div className="space-y-2">
-          <Label className="text-xs">Длина участка, м</Label>
-          <Input
+        <Field label="Длина, м">
+          <StyledInput
             type="number"
             value={element.props?.length ?? ''}
             onChange={e => onUpdate({ length: parseFloat(e.target.value) || '' })}
             step={0.5} min={0.1}
-            className="h-8 text-sm"
+            placeholder="1.0"
           />
-        </div>
+        </Field>
       )}
 
+      {/* Radiator props */}
       {element.type === 'radiator' && (
-        <div className="space-y-2">
-          <div>
-            <Label className="text-xs">Название помещения</Label>
-            <Input
+        <>
+          <Field label="Помещение">
+            <StyledInput
+              type="text"
               value={element.props?.roomName ?? ''}
               onChange={e => onUpdate({ roomName: e.target.value })}
               placeholder="Гостиная..."
-              className="h-8 text-sm"
             />
-          </div>
-          <div className="pt-1 pb-0.5">
-            <p className="text-[10px] text-slate-400 text-center">— укажите расход ИЛИ мощность —</p>
+          </Field>
+          <div style={{ fontSize: 9, color: dark.textMuted, textAlign: 'center', padding: '2px 0' }}>
+            — расход ИЛИ мощность —
           </div>
           {flowWarning && (
-            <div className="flex items-center gap-1 text-[10px] text-amber-600 bg-amber-50 rounded px-2 py-1">
-              <AlertCircle className="w-3 h-3 shrink-0" />
-              Минимальный расход ограничен 0.65 л/мин
+            <div className="flex items-center gap-1" style={{
+              fontSize: 10, color: dark.warn, background: '#292100',
+              borderRadius: 6, padding: '4px 8px', border: `1px solid ${dark.warn}33`,
+            }}>
+              <AlertCircle size={12} />
+              Минимум: 0.65 л/мин
             </div>
           )}
-          <div>
-            <Label className="text-xs">Расход теплоносителя, л/мин</Label>
-            <Input
+          <Field label="Расход, л/мин">
+            <StyledInput
               type="number"
               value={element.props?.flowRate ?? ''}
               onChange={e => {
@@ -92,64 +179,53 @@ export default function Inspector({ element, results, onUpdate, onDelete }) {
                   setFlowWarning(false);
                 }
               }}
-              step={0.1} min={0}
-              className="h-8 text-sm"
+              step={0.1} min={0} placeholder="0.65"
             />
-          </div>
-          <div>
-            <Label className="text-xs">Мощность радиатора при ΔT=70°, Вт</Label>
-            <Input
+          </Field>
+          <Field label="Мощность при ΔT=70°, Вт">
+            <StyledInput
               type="number"
               value={element.props?.power ?? ''}
               onChange={e => { onUpdate({ power: e.target.value, flowRate: '' }); setFlowWarning(false); }}
-              step={100} min={0}
-              className="h-8 text-sm"
+              step={100} min={0} placeholder="1000"
             />
-          </div>
-        </div>
+          </Field>
+        </>
       )}
 
       {/* Results */}
       {results && (
-        <div className="pt-1 border-t border-slate-100 space-y-1.5">
-          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Результаты расчёта</p>
-
-          {element.type === 'pump' && (
-            <>
+        <>
+          <div style={{ height: 1, background: dark.border }} />
+          <p style={{ fontSize: 9, fontWeight: 700, color: dark.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+            Результаты расчёта
+          </p>
+          <div className="space-y-1.5">
+            {element.type === 'pump' && <>
               <ResultRow label="Расход" value={results.flowRate?.toFixed(1)} unit="л/мин" />
-              <ResultRow label="Напор насоса" value={results.head?.toFixed(2)} unit="м вод.ст." />
-              <ResultRow label="Перепад давления" value={(results.pressure / 1000)?.toFixed(2)} unit="кПа" />
-            </>
-          )}
-
-          {element.type === 'pipe' && (
-            <>
+              <ResultRow label="Напор" value={results.head?.toFixed(2)} unit="м вод.ст." />
+              <ResultRow label="ΔP" value={(results.pressure / 1000)?.toFixed(2)} unit="кПа" color={dark.accent} />
+            </>}
+            {element.type === 'pipe' && <>
               <ResultRow label="Диаметр" value={results.size ? `Ø${results.size.outer}×${results.size.wall}` : '—'} unit="мм" />
               <ResultRow label="Скорость" value={results.velocity?.toFixed(3)} unit="м/с" />
-              <ResultRow label="Потери давления" value={results.pressureLoss?.toFixed(1)} unit="Па" />
+              <ResultRow label="ΔP" value={results.pressureLoss?.toFixed(1)} unit="Па" color={dark.warn} />
               <ResultRow label="Расход" value={results.flowRate?.toFixed(2)} unit="л/мин" />
-            </>
-          )}
-
-          {element.type === 'tee' && (
-            <>
+            </>}
+            {element.type === 'tee' && <>
               <ResultRow label="Диаметр" value={results.size ? `Ø${results.size.outer}` : '—'} unit="мм" />
               <ResultRow label="ΔP прямой" value={results.pressureLossPass?.toFixed(1)} unit="Па" />
               <ResultRow label="ΔP ответвл." value={results.pressureLossBranch?.toFixed(1)} unit="Па" />
-            </>
-          )}
-
-          {element.type === 'elbow' && (
-            <>
+            </>}
+            {element.type === 'elbow' && <>
               <ResultRow label="Диаметр" value={results.size ? `Ø${results.size.outer}` : '—'} unit="мм" />
-              <ResultRow label="Потери давления" value={results.pressureLoss?.toFixed(1)} unit="Па" />
-            </>
-          )}
-
-          {element.type === 'radiator' && (
-            <ResultRow label="Расход" value={results.flowRate?.toFixed(3)} unit="л/мин" />
-          )}
-        </div>
+              <ResultRow label="ΔP" value={results.pressureLoss?.toFixed(1)} unit="Па" color={dark.warn} />
+            </>}
+            {element.type === 'radiator' && (
+              <ResultRow label="Расход" value={results.flowRate?.toFixed(3)} unit="л/мин" />
+            )}
+          </div>
+        </>
       )}
     </div>
   );

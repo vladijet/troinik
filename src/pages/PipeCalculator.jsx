@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { toast } from 'sonner';
-import { Play, Download, Flame, RotateCcw, HelpCircle } from 'lucide-react';
+import { Play, Download, Flame, RotateCcw, HelpCircle, RotateCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -113,6 +113,13 @@ export default function PipeCalculator() {
     setResults(null);
   }, [selectedId]);
 
+  const handleRotateElement = useCallback((elId) => {
+    setElements(prev => prev.map(e =>
+      e.id === elId ? { ...e, rotation: ((e.rotation || 0) + 90) % 360 } : e
+    ));
+    setResults(null);
+  }, []);
+
   const handleDeleteSelected = useCallback(() => {
     if (!selectedId || selectedId === 'pump-0') return;
     setElements(prev => prev.filter(e => e.id !== selectedId));
@@ -219,53 +226,53 @@ export default function PipeCalculator() {
   }, [results, elements, globalParams]);
 
   return (
-    <div className="h-screen flex flex-col bg-slate-50" style={{ overflow: 'hidden' }}>
-      <header className="h-14 flex items-center gap-3 px-4 bg-white border-b border-slate-200 shrink-0 z-10">
+    <div className="h-screen flex flex-col" style={{ overflow: 'hidden', background: '#0f172a' }}>
+      <header className="h-14 flex items-center gap-3 px-4 shrink-0 z-10" style={{ background: '#0f172a', borderBottom: '1px solid #1e3a5f' }}>
         <div className="flex items-center gap-2 shrink-0">
-          <div className="p-1.5 rounded-lg bg-primary/10">
-            <Flame className="w-4 h-4 text-primary" />
+          <div className="p-1.5 rounded-lg" style={{ background: '#1e3a5f' }}>
+            <Flame className="w-4 h-4" style={{ color: '#3b82f6' }} />
           </div>
           <div>
-            <div className="text-sm font-bold leading-none">HydroCalc</div>
-            <div className="text-[10px] text-muted-foreground">Двухтрубная тройниковая система</div>
+            <div className="text-sm font-bold leading-none" style={{ color: '#e2e8f0' }}>HydroCalc</div>
+            <div className="text-[10px]" style={{ color: '#334155' }}>Двухтрубная тройниковая система</div>
           </div>
         </div>
 
-        <div className="h-6 w-px bg-slate-200 mx-1" />
+        <div className="h-6 w-px mx-1" style={{ background: '#1e3a5f' }} />
 
         <div className="flex items-center gap-2 text-xs">
-          <Label className="text-xs text-slate-500 shrink-0">Тип труб:</Label>
+          <Label className="text-xs shrink-0" style={{ color: '#475569' }}>Тип труб:</Label>
           <Select value={globalParams.pipeType} onValueChange={v => { setGlobalParams(p => ({ ...p, pipeType: v })); setResults(null); }}>
-            <SelectTrigger className="h-7 text-xs w-52"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="h-7 text-xs w-52" style={{ background: '#1e293b', borderColor: '#1e3a5f', color: '#94a3b8' }}><SelectValue /></SelectTrigger>
             <SelectContent>
               {Object.entries(PIPE_TYPES).map(([key, s]) => (
                 <SelectItem key={key} value={key} className="text-xs">{s.name}</SelectItem>
               ))}
             </SelectContent>
           </Select>
-          <Label className="text-xs text-slate-500 shrink-0">Подача °C:</Label>
-          <Input type="number" value={globalParams.tSupply} onChange={e => setGlobalParams(p => ({ ...p, tSupply: +e.target.value }))} className="h-7 w-14 text-xs" />
-          <Label className="text-xs text-slate-500 shrink-0">Обратка °C:</Label>
-          <Input type="number" value={globalParams.tReturn} onChange={e => setGlobalParams(p => ({ ...p, tReturn: +e.target.value }))} className="h-7 w-14 text-xs" />
+          <Label className="text-xs shrink-0" style={{ color: '#475569' }}>Подача °C:</Label>
+          <Input type="number" value={globalParams.tSupply} onChange={e => setGlobalParams(p => ({ ...p, tSupply: +e.target.value }))} className="h-7 w-14 text-xs" style={{ background: '#1e293b', borderColor: '#1e3a5f', color: '#94a3b8' }} />
+          <Label className="text-xs shrink-0" style={{ color: '#475569' }}>Обратка °C:</Label>
+          <Input type="number" value={globalParams.tReturn} onChange={e => setGlobalParams(p => ({ ...p, tReturn: +e.target.value }))} className="h-7 w-14 text-xs" style={{ background: '#1e293b', borderColor: '#1e3a5f', color: '#94a3b8' }} />
         </div>
 
         <div className="ml-auto flex items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={handleReset} className="gap-1 text-xs h-8">
+          <Button variant="ghost" size="sm" onClick={handleReset} className="gap-1 text-xs h-8" style={{ color: '#64748b' }}>
             <RotateCcw className="w-3.5 h-3.5" /> Сбросить
           </Button>
           <Button onClick={handleCalculate} size="sm" className="gap-1.5 text-xs h-8">
-            <Play className="w-3.5 h-3.5" /> Выполнить расчёт
+            <Play className="w-3.5 h-3.5" /> Расчёт
           </Button>
-          <Button onClick={handleExportPDF} variant="outline" size="sm" className="gap-1.5 text-xs h-8" disabled={!results}>
+          <Button onClick={handleExportPDF} variant="outline" size="sm" className="gap-1.5 text-xs h-8" disabled={!results} style={{ borderColor: '#1e3a5f', color: '#64748b' }}>
             <Download className="w-3.5 h-3.5" /> PDF
           </Button>
         </div>
       </header>
 
       {!results && (
-        <div className="bg-blue-50 border-b border-blue-100 px-4 py-1.5 text-[11px] text-blue-600 flex items-center gap-2 shrink-0">
-          <HelpCircle className="w-3 h-3 shrink-0" />
-          Кликайте на элементы в левой панели — они добавляются к активной <span className="font-semibold text-red-500">красной точке</span>. Нажмите на любую точку, чтобы сделать её активной. Перетаскивайте элементы. Delete — удалить выбранный.
+        <div className="px-4 py-1.5 text-[11px] flex items-center gap-2 shrink-0" style={{ background: '#1e293b', borderBottom: '1px solid #1e3a5f', color: '#475569' }}>
+          <HelpCircle className="w-3 h-3 shrink-0" style={{ color: '#3b82f6' }} />
+          Добавляйте элементы к <span className="font-semibold" style={{ color: '#ef4444' }}>красной точке</span>. Нажмите точку — сделать активной. Кнопка <span style={{ color: '#93c5fd' }}>↻</span> на выбранном — повернуть на 90°. Delete — удалить.
         </div>
       )}
 
@@ -281,14 +288,16 @@ export default function PipeCalculator() {
             onElementMove={handleElementMove}
             onElementClick={setSelectedId}
             onPortClick={handlePortClick}
+            onRotate={handleRotateElement}
           />
         </div>
-        <div className="w-60 bg-white border-l border-slate-200 overflow-y-auto shrink-0">
+        <div className="w-60 overflow-y-auto shrink-0" style={{ background: '#0f172a', borderLeft: '1px solid #1e3a5f' }}>
           <Inspector
             element={selectedElement}
             results={selectedElement ? results?.[selectedElement.id] : null}
             onUpdate={handleUpdateProps}
             onDelete={handleDeleteSelected}
+            onRotate={handleRotateElement}
           />
         </div>
       </div>
