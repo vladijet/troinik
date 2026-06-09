@@ -18,7 +18,6 @@ export const ZETA = {
 };
 
 // ─── Port config: только компоненты (не труба) ────────────────────────────────
-// Трубы теперь — это рёбра, а не узлы.
 export const NODE_PORT_CONFIG = {
   pump:     { out:    { x:  28, y:   0, type: 'out', dir: 'right' } },
   tee:      { in:     { x: -28, y:   0, type: 'in',  dir: 'left'  },
@@ -93,8 +92,8 @@ export function getPortAbsPos(node, portId) {
   return { x: node.x + rp.x, y: node.y + rp.y, dir: rotateDir(port.dir, rot) };
 }
 
-// ─── Open ports (для проверки топологии) ────────────────────────────────────
-// out-порт радиатора не считается ошибкой — радиатор является терминальным узлом
+// ─── Open ports (для проверки топологии) ─────────────────────────────────────
+// out-порт радиатора НЕ считается ошибкой — радиатор является терминальным узлом
 export function getOpenPorts(nodes, edges) {
   const used = new Set(edges.flatMap(e => [
     `${e.fromNodeId}:${e.fromPortId}`,
@@ -105,29 +104,21 @@ export function getOpenPorts(nodes, edges) {
     const config = NODE_PORT_CONFIG[node.type];
     if (!config) return;
     Object.entries(config).forEach(([portId]) => {
-      if (!used.has(`${node.id}:${portId}`)) {
-        // out-порт радиатора разрешено оставлять свободным
-        if (node.type === 'radiator' && portId === 'out') return;
-        open.push({ nodeId: node.id, portId });
-      }
+      if (used.has(`${node.id}:${portId}`)) return;
+      // out-порт радиатора разрешено оставлять свободным — конец ветки
+      if (node.type === 'radiator' && portId === 'out') return;
+      open.push({ nodeId: node.id, portId });
     });
   });
   return open;
 }
 
 // ─── Topology validation ──────────────────────────────────────────────────────
-/**
- * Возвращает { valid: bool, errors: string[], openPorts: [{nodeId,portId}] }
- * Правила:
- *  1. Нет открытых портов
- *  2. Каждая ветка заканчивается радиатором
- *  3. Есть хотя бы один радиатор
- */
 export function validateTopology(nodes, edges) {
   const errors = [];
   const nodeMap = Object.fromEntries(nodes.map(n => [n.id, n]));
 
-  // 1. Открытые порты
+  // 1. Открытые порты (out радиатора уже исключён в getOpenPorts)
   const openPorts = getOpenPorts(nodes, edges);
   if (openPorts.length > 0) {
     errors.push(`Незакрытые порты: ${openPorts.length} шт. Подключите все точки.`);
@@ -141,8 +132,7 @@ export function validateTopology(nodes, edges) {
   const radiators = nodes.filter(n => n.type === 'radiator');
   if (radiators.length === 0) { errors.push('Добавьте хотя бы один радиатор.'); }
 
-  // 4. BFS от насоса — проверяем что все концевые узлы = радиаторы
-  // (считаем концевым узел, у которого нет исходящих рёбер ИЛИ у радиатора свободен out-порт)
+  // 4. BFS: концевые узлы должны быть радиаторами
   if (openPorts.length === 0 && radiators.length > 0) {
     const adjOut = {};
     nodes.forEach(n => (adjOut[n.id] = []));
@@ -156,9 +146,8 @@ export function validateTopology(nodes, edges) {
       visited.add(id);
       const node = nodeMap[id];
       const outs = adjOut[id] || [];
-      // Терминальный: нет исходящих рёбер, либо это радиатор (out может быть свободен)
-      const isTerminal = outs.length === 0 || node?.type === 'radiator';
-      if (isTerminal && node?.type !== 'radiator') {
+      // Узел без исходящих рёбер — концевой, должен быть радиатором
+      if (outs.length === 0 && node?.type !== 'radiator') {
         errors.push(`Ветка заканчивается не радиатором (${id}).`);
       }
       outs.forEach(nid => !visited.has(nid) && queue.push(nid));
