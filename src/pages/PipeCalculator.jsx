@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import Canvas from '@/components/pipe-calc/Canvas';
 import ElementPanel from '@/components/pipe-calc/ElementPanel';
 import Inspector from '@/components/pipe-calc/Inspector';
-import { ELEMENT_TYPES, getPortAbsPos, getOpenOutPorts } from '@/components/pipe-calc/elementConfig';
+import { ELEMENT_TYPES, getOpenOutPorts } from '@/components/pipe-calc/elementConfig';
 import { calcSystem } from '@/lib/pipeCalcEngine';
 import { PIPE_TYPES } from '@/lib/pipeStandards';
 import jsPDF from 'jspdf';
@@ -29,7 +29,6 @@ export default function PipeCalculator() {
 
   const selectedElement = elements.find(e => e.id === selectedId) || null;
 
-  // Delete key handler
   useEffect(() => {
     const handler = (e) => {
       if ((e.key === 'Delete' || e.key === 'Backspace') && selectedId && selectedId !== 'pump-0') {
@@ -86,7 +85,6 @@ export default function PipeCalculator() {
     if (outPorts.length > 0) {
       newActive = { elementId: newEl.id, portId: outPorts[0][0] };
     } else {
-      // Terminal element - find next open out port
       const updatedEls = [...elements, newEl];
       const updatedConns = newConn ? [...connections, newConn] : connections;
       const open = getOpenOutPorts(updatedEls, updatedConns);
@@ -127,7 +125,7 @@ export default function PipeCalculator() {
   const handleReset = useCallback(() => {
     if (!confirm('Очистить всю схему?')) return;
     _id = 1;
-    setElements([INIT_PUMP]);
+    setElements([{ ...INIT_PUMP }]);
     setConnections([]);
     setSelectedId(null);
     setActivePort({ elementId: 'pump-0', portId: 'out' });
@@ -171,11 +169,10 @@ export default function PipeCalculator() {
     if (pump) {
       doc.setFontSize(11);
       doc.setFont(undefined, 'bold');
-      doc.text(`Параметры насоса:  Q = ${pump.flowRate?.toFixed(1)} л/мин   H = ${pump.head?.toFixed(2)} м вод.ст.   ΔP = ${(pump.pressure / 1000)?.toFixed(2)} кПа`, 14, 30);
+      doc.text(`Насос:  Q = ${pump.flowRate?.toFixed(1)} л/мин   H = ${pump.head?.toFixed(2)} м   ΔP = ${(pump.pressure / 1000)?.toFixed(2)} кПа`, 14, 30);
       doc.setFont(undefined, 'normal');
     }
 
-    // Table
     const headers = ['Элемент', 'Помещение', 'Расход л/мин', 'Диаметр мм', 'Скорость м/с', 'ΔP, Па'];
     const colW = [55, 45, 28, 32, 30, 26];
     const startX = 14;
@@ -198,12 +195,12 @@ export default function PipeCalculator() {
       if (el.type === 'pump') {
         row[0] = 'Насос'; row[2] = res.flowRate?.toFixed(1); row[5] = (res.pressure / 1000)?.toFixed(2) + ' кПа';
       } else if (el.type === 'pipe') {
-        row[0] = `Труба (L=${el.props?.length}м)`; row[2] = res.flowRate?.toFixed(2);
+        row[0] = `Труба L=${el.props?.length}м`; row[2] = res.flowRate?.toFixed(2);
         row[3] = res.size ? `Ø${res.size.outer}×${res.size.wall}` : '-';
         row[4] = res.velocity?.toFixed(3); row[5] = res.pressureLoss?.toFixed(0);
       } else if (el.type === 'tee') {
         row[0] = 'Тройник'; row[3] = res.size ? `Ø${res.size.outer}` : '-';
-        row[5] = res.pressureLossPass?.toFixed(0) + ' / ' + res.pressureLossBranch?.toFixed(0);
+        row[5] = (res.pressureLossPass?.toFixed(0) || '-') + '/' + (res.pressureLossBranch?.toFixed(0) || '-');
       } else if (el.type === 'elbow') {
         row[0] = 'Угол 90°'; row[3] = res.size ? `Ø${res.size.outer}` : '-'; row[5] = res.pressureLoss?.toFixed(0);
       } else if (el.type === 'radiator') {
@@ -223,7 +220,6 @@ export default function PipeCalculator() {
 
   return (
     <div className="h-screen flex flex-col bg-slate-50" style={{ overflow: 'hidden' }}>
-      {/* Header */}
       <header className="h-14 flex items-center gap-3 px-4 bg-white border-b border-slate-200 shrink-0 z-10">
         <div className="flex items-center gap-2 shrink-0">
           <div className="p-1.5 rounded-lg bg-primary/10">
@@ -266,18 +262,15 @@ export default function PipeCalculator() {
         </div>
       </header>
 
-      {/* Hint bar */}
       {!results && (
         <div className="bg-blue-50 border-b border-blue-100 px-4 py-1.5 text-[11px] text-blue-600 flex items-center gap-2 shrink-0">
           <HelpCircle className="w-3 h-3 shrink-0" />
-          Кликайте по элементам в левой панели, чтобы добавить их на схему. Новый элемент подключается к красной точке.
-          Нажмите на любую красную точку, чтобы сделать её активной. Перетаскивайте элементы мышью. Delete — удалить выбранный.
+          Кликайте на элементы в левой панели — они добавляются к активной <span className="font-semibold text-red-500">красной точке</span>. Нажмите на любую точку, чтобы сделать её активной. Перетаскивайте элементы. Delete — удалить выбранный.
         </div>
       )}
 
       <div className="flex flex-1 overflow-hidden">
         <ElementPanel onAddElement={handleAddElement} />
-
         <div className="flex-1 relative overflow-hidden">
           <Canvas
             elements={elements}
@@ -290,7 +283,6 @@ export default function PipeCalculator() {
             onPortClick={handlePortClick}
           />
         </div>
-
         <div className="w-60 bg-white border-l border-slate-200 overflow-y-auto shrink-0">
           <Inspector
             element={selectedElement}

@@ -7,7 +7,7 @@ import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import ScrollToTop from './components/ScrollToTop';
 import Configurator from './pages/Configurator';
-import PipeCalculator from './pages/PipeCalculator';
+import PipeCalculator from './pages/PipeCalculator.jsx';
 // Add page imports here
 
 const AuthenticatedApp = () => {
