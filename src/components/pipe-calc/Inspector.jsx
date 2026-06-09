@@ -1,4 +1,5 @@
-import { Trash2, Info } from 'lucide-react';
+import { Trash2, Info, AlertCircle } from 'lucide-react';
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -15,6 +16,8 @@ function ResultRow({ label, value, unit, color = 'text-emerald-700' }) {
 }
 
 export default function Inspector({ element, results, onUpdate, onDelete }) {
+  const [flowWarning, setFlowWarning] = useState(false);
+
   if (!element) {
     return (
       <div className="p-4 flex flex-col items-center justify-center h-full text-center gap-2">
@@ -68,12 +71,27 @@ export default function Inspector({ element, results, onUpdate, onDelete }) {
           <div className="pt-1 pb-0.5">
             <p className="text-[10px] text-slate-400 text-center">— укажите расход ИЛИ мощность —</p>
           </div>
+          {flowWarning && (
+            <div className="flex items-center gap-1 text-[10px] text-amber-600 bg-amber-50 rounded px-2 py-1">
+              <AlertCircle className="w-3 h-3 shrink-0" />
+              Минимальный расход ограничен 0.65 л/мин
+            </div>
+          )}
           <div>
             <Label className="text-xs">Расход теплоносителя, л/мин</Label>
             <Input
               type="number"
               value={element.props?.flowRate ?? ''}
-              onChange={e => onUpdate({ flowRate: e.target.value, power: '' })}
+              onChange={e => {
+                const val = parseFloat(e.target.value);
+                if (val > 0 && val < 0.65) {
+                  onUpdate({ flowRate: 0.65, power: '' });
+                  setFlowWarning(true);
+                } else {
+                  onUpdate({ flowRate: e.target.value, power: '' });
+                  setFlowWarning(false);
+                }
+              }}
               step={0.1} min={0}
               className="h-8 text-sm"
             />
@@ -83,7 +101,7 @@ export default function Inspector({ element, results, onUpdate, onDelete }) {
             <Input
               type="number"
               value={element.props?.power ?? ''}
-              onChange={e => onUpdate({ power: e.target.value, flowRate: '' })}
+              onChange={e => { onUpdate({ power: e.target.value, flowRate: '' }); setFlowWarning(false); }}
               step={100} min={0}
               className="h-8 text-sm"
             />
