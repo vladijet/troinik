@@ -1,62 +1,42 @@
 /**
- * ElementPanel — sidebar with schematic-style element icons
+ * ElementPanel — только компоненты (без трубы, она создаётся автоматически как ребро)
  */
 const ITEMS = [
   {
-    type: 'pipe',
-    label: 'Труба',
+    type: 'tee', label: 'Тройник',
     svg: (
-      <svg viewBox="-52 -16 104 32" width={58} height={28}>
-        <line x1={-44} y1={-5} x2={44} y2={-5} stroke="#3b82f6" strokeWidth={2} />
-        <line x1={-44} y1={ 5} x2={44} y2={ 5} stroke="#3b82f6" strokeWidth={2} />
-        <line x1={-44} y1={-8} x2={-44} y2={8} stroke="#3b82f6" strokeWidth={2} />
-        <line x1={ 44} y1={-8} x2={ 44} y2={8} stroke="#3b82f6" strokeWidth={2} />
-        <line x1={-44} y1={0} x2={44} y2={0} stroke="#3b82f6" strokeWidth={0.8} strokeDasharray="7 4" opacity={0.4} />
-        <path d="M -5,0 L 5,-4 L 5,4 Z" fill="#3b82f6" opacity={0.7} />
+      <svg viewBox="-32 -20 64 56" width={48} height={44}>
+        <line x1={-28} y1={0} x2={28}  y2={0}  stroke="#10b981" strokeWidth={3} strokeLinecap="round" />
+        <line x1={0}   y1={0} x2={0}   y2={28} stroke="#10b981" strokeWidth={3} strokeLinecap="round" />
+        <circle r={4} fill="#10b981" />
+        <circle cx={-28} cy={0}  r={3.5} fill="#4ade80" />
+        <circle cx={ 28} cy={0}  r={3.5} fill="#4ade80" />
+        <circle cx={0}  cy={28} r={3.5} fill="#4ade80" />
       </svg>
     ),
   },
   {
-    type: 'tee',
-    label: 'Тройник',
+    type: 'elbow', label: 'Угол 90°',
     svg: (
-      <svg viewBox="-44 -16 88 56" width={52} height={52}>
-        <line x1={-40} y1={-5} x2={40} y2={-5} stroke="#10b981" strokeWidth={2} />
-        <line x1={-40} y1={ 5} x2={40} y2={ 5} stroke="#10b981" strokeWidth={2} />
-        <line x1={-40} y1={-8} x2={-40} y2={8} stroke="#10b981" strokeWidth={2} />
-        <line x1={ 40} y1={-8} x2={ 40} y2={8} stroke="#10b981" strokeWidth={2} />
-        <line x1={-5} y1={5} x2={-5} y2={36} stroke="#10b981" strokeWidth={2} />
-        <line x1={ 5} y1={5} x2={ 5} y2={36} stroke="#10b981" strokeWidth={2} />
-        <line x1={-8} y1={36} x2={8} y2={36} stroke="#10b981" strokeWidth={2} />
+      <svg viewBox="-32 -20 60 56" width={44} height={48}>
+        <path d="M -28,0 L 0,0 L 0,28" fill="none" stroke="#f59e0b" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" />
+        <circle r={4} fill="#f59e0b" />
+        <circle cx={-28} cy={0}  r={3.5} fill="#fbbf24" />
+        <circle cx={0}   cy={28} r={3.5} fill="#fbbf24" />
+        <text x={6} y={-8} fontSize={8} fill="#78350f">90°</text>
       </svg>
     ),
   },
   {
-    type: 'elbow',
-    label: 'Угол 90°',
+    type: 'radiator', label: 'Радиатор',
     svg: (
-      <svg viewBox="-36 -16 64 56" width={44} height={48}>
-        <line x1={-30} y1={-5} x2={0} y2={-5} stroke="#f59e0b" strokeWidth={2} />
-        <line x1={-30} y1={ 5} x2={0} y2={ 5} stroke="#f59e0b" strokeWidth={2} />
-        <line x1={-30} y1={-8} x2={-30} y2={8} stroke="#f59e0b" strokeWidth={2} />
-        <line x1={-5} y1={0} x2={-5} y2={30} stroke="#f59e0b" strokeWidth={2} />
-        <line x1={ 5} y1={0} x2={ 5} y2={30} stroke="#f59e0b" strokeWidth={2} />
-        <line x1={-8} y1={30} x2={8} y2={30} stroke="#f59e0b" strokeWidth={2} />
-        <path d="M -5,0 Q 5,0 5,10" fill="none" stroke="#f59e0b" strokeWidth={2} />
-        <text x={8} y={-6} fontSize={7} fill="#fcd34d">90°</text>
-      </svg>
-    ),
-  },
-  {
-    type: 'radiator',
-    label: 'Радиатор',
-    svg: (
-      <svg viewBox="-64 -28 128 56" width={64} height={48}>
-        <rect x={-56} y={-20} width={112} height={40} rx={3} fill="#0f172a" stroke="#ef4444" strokeWidth={1.5} />
-        {[-36, -20, -4, 12, 28].map(lx => (
-          <line key={lx} x1={lx} y1={-14} x2={lx} y2={14} stroke="#ef4444" strokeWidth={2} opacity={0.7} />
+      <svg viewBox="-56 -28 112 60" width={60} height={48}>
+        <rect x={-50} y={-20} width={100} height={40} rx={3} fill="#0f172a" stroke="#ef4444" strokeWidth={1.5} />
+        {[-30,-14,2,18,34].map(x => (
+          <line key={x} x1={x} y1={-14} x2={x} y2={14} stroke="#ef4444" strokeWidth={2} opacity={0.6} />
         ))}
-        <path d="M 44,-8 Q 48,-4 44,0 Q 40,4 44,8" stroke="#ef4444" strokeWidth={1} fill="none" opacity={0.6} />
+        <circle cx={-50} cy={0} r={3.5} fill="#f87171" />
+        <circle cx={ 50} cy={0} r={3.5} fill="#f87171" />
       </svg>
     ),
   },
@@ -69,6 +49,9 @@ export default function ElementPanel({ onAddElement }) {
       <p className="text-[9px] uppercase tracking-widest mb-1 text-center leading-tight"
         style={{ color: '#334155' }}>
         ЭЛЕМЕНТЫ
+      </p>
+      <p className="text-[8px] text-center leading-tight px-1 mb-2" style={{ color: '#1e3a5f' }}>
+        Труба — автоматически при соединении
       </p>
       {ITEMS.map(item => (
         <button key={item.type} onClick={() => onAddElement(item.type)} title={item.label}
