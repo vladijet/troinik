@@ -167,16 +167,24 @@ export default function PipeCalculator() {
 
   // ─── Расчёт ─────────────────────────────────────────────────────────────
   const handleCalculate = useCallback(() => {
-    const val = validateTopology(nodes, edges);
-    setValidation(val);
-    if (!val.valid) {
-      toast.error(val.errors[0] || 'Схема не замкнута');
-      return;
+    try {
+      console.log('[Calc] nodes:', nodes.length, 'edges:', edges.length);
+      const val = validateTopology(nodes, edges);
+      console.log('[Calc] validation:', val);
+      setValidation(val);
+      if (!val.valid) {
+        toast.error(val.errors[0] || 'Схема не замкнута');
+        return;
+      }
+      const res = calcHydraulicGraph(nodes, edges, globalParams);
+      console.log('[Calc] result:', res);
+      if (res.error) { toast.error(res.error); return; }
+      setResults(res.elementResults);
+      toast.success(`Насос: H=${res.pumpHead.toFixed(2)} м,  Q=${res.pumpFlow.toFixed(1)} л/мин`);
+    } catch (err) {
+      console.error('[Calc] exception:', err);
+      toast.error(`Ошибка расчёта: ${err.message}`);
     }
-    const res = calcHydraulicGraph(nodes, edges, globalParams);
-    if (res.error) { toast.error(res.error); return; }
-    setResults(res.elementResults);
-    toast.success(`Насос: H=${res.pumpHead.toFixed(2)} м,  Q=${res.pumpFlow.toFixed(1)} л/мин`);
   }, [nodes, edges, globalParams]);
 
   const openPorts   = validation ? validation.openPorts : [];
