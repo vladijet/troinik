@@ -156,7 +156,7 @@ function buildSpecification(nodes, edges, results, pipeType) {
   const items = [];
   if (hasPump) items.push({ name: 'Циркуляционный насос', qty: 1, unit: 'шт' });
   if (radiatorCount > 0) {
-    items.push({ name: 'Узел нижнего подключения 3/4" (Евроконус, Бинокль/Мультифлекс)', qty: radiatorCount, unit: 'компл.' });
+    items.push({ name: 'Узел нижнего подключения радиатора 3/4"', qty: radiatorCount, unit: 'компл.' });
     items.push({ name: adapter.short, qty: radiatorCount * 2, unit: 'шт' });
   }
   Object.entries(teeGroups).forEach(([name, qty]) => items.push({ name, qty, unit: 'шт' }));
