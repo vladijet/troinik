@@ -5,8 +5,8 @@
  */
 
 export const WATER = {
-  density: 971.8,      // kg/m³ at 80°C
-  viscosity: 0.000365, // m²/s kinematic
+  density: 971.8,         // kg/m³ at 75°C
+  viscosity: 0.000000378, // m²/s kinematic viscosity at 75°C (не сантистоксы, а м²/с!)
 };
 
 export const ZETA = {
