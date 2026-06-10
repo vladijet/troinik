@@ -67,7 +67,8 @@ export function calcHydraulicGraph(nodes, edges, globalParams) {
       q = parseFloat(power) / (WATER.density * 4186 * deltaT / 60000);
       q = Math.max(MIN_FLOW_LPM, q);
     } else {
-      return { error: `Радиатор "${rad.props?.roomName || rad.id}": укажите расход или мощность` };
+      // По умолчанию используем минимальный расход
+      q = MIN_FLOW_LPM;
     }
     radFlow[rad.id] = q;
   }

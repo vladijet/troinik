@@ -161,7 +161,7 @@ function NodePanel({ node, res, onUpdate, onDelete, onRotate }) {
           <Field label="Мощность, Вт">
             <SInput type="number" value={node.props?.power ?? ''}
               onChange={e => { onUpdate({ power: e.target.value, flowRate: '' }); setFlowWarn(false); }}
-              step={100} min={0} placeholder="1000" />
+              step={100} min={0} placeholder="" />
           </Field>
         </>
       )}
