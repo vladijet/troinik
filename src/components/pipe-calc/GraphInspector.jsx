@@ -55,8 +55,8 @@ function EdgePanel({ edge, res, onUpdateEdge, onDeleteEdge }) {
           <div className="flex items-center gap-2">
             {/* Иконка двойной трубы: синяя + красная */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              <div style={{ width: 20, height: 2, background: '#3b82f6', borderRadius: 1 }} />
               <div style={{ width: 20, height: 2, background: '#ef4444', borderRadius: 1 }} />
+              <div style={{ width: 20, height: 2, background: '#3b82f6', borderRadius: 1 }} />
             </div>
             <span style={{ fontWeight: 700, fontSize: 13, color: D.bright }}>Магистраль</span>
           </div>
@@ -76,8 +76,8 @@ function EdgePanel({ edge, res, onUpdateEdge, onDeleteEdge }) {
       {/* Подсказка о двухтрубной модели */}
       <div style={{ background: '#0a1929', border: `1px solid #1e3a5f`, borderRadius: 5, padding: '6px 8px' }}>
         <p style={{ fontSize: 9, color: D.muted, lineHeight: 1.5, margin: 0 }}>
-          <span style={{ color: '#3b82f6', fontWeight: 700 }}>▶ подача</span> и{' '}
-          <span style={{ color: '#ef4444', fontWeight: 700 }}>◀ обратка</span> идут параллельно.
+          <span style={{ color: '#ef4444', fontWeight: 700 }}>▶ подача</span> и{' '}
+          <span style={{ color: '#3b82f6', fontWeight: 700 }}>◀ обратка</span> идут параллельно.
           Укажите длину одной трубы — обратная рассчитывается автоматически.
         </p>
       </div>

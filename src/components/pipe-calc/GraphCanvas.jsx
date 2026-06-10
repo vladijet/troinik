@@ -77,11 +77,14 @@ function RadiatorSymbol({ sel, props, res }) {
   const w = 100, h = 40;
   return (
     <g>
+      {/* Корпус радиатора */}
       <rect x={-w/2} y={-h/2} width={w} height={h} rx={3} fill={BG} stroke={s} strokeWidth={sel?2:1.5} />
       {[-32,-16,0,16,32].map(x => (
         <line key={x} x1={x} y1={-h/2+4} x2={x} y2={h/2-4} stroke={s} strokeWidth={2} opacity={0.55} />
       ))}
-      {props?.roomName && <text y={-h/2-8} textAnchor="middle" fontSize={9} fill="#94a3b8" fontWeight="600">{props.roomName}</text>}
+      {/* Трубка подключения сверху по центру */}
+      <line x1={0} y1={-h/2} x2={0} y2={-20} stroke={s} strokeWidth={2} opacity={0.8} />
+      {props?.roomName && <text y={-h/2-22} textAnchor="middle" fontSize={9} fill="#94a3b8" fontWeight="600">{props.roomName}</text>}
       {res?.flowRate != null && <text y={h/2+12} textAnchor="middle" fontSize={7} fill="#34d399">Q={res.flowRate.toFixed(2)} л/мин</text>}
     </g>
   );
@@ -321,10 +324,10 @@ export default function GraphCanvas({
           <circle cx={dotR} cy={dotR} r={dotR} fill={GRID} />
         </pattern>
         <marker id="arr" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
-          <path d="M0,0 L6,3 L0,6 Z" fill="#3b82f6" opacity={0.7} />
+          <path d="M0,0 L6,3 L0,6 Z" fill="#ef4444" opacity={0.7} />
         </marker>
         <marker id="arr-ret" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
-          <path d="M0,0 L6,3 L0,6 Z" fill="#ef4444" opacity={0.7} />
+          <path d="M0,0 L6,3 L0,6 Z" fill="#3b82f6" opacity={0.7} />
         </marker>
       </defs>
 
@@ -341,8 +344,8 @@ export default function GraphCanvas({
           const mid = pathMidpoint(from, edge.fromPortId, to, edge.toPortId);
           const res = results?.[edge.id];
           const isSel = selectedId === edge.id;
-          const supplyColor = isSel ? '#60a5fa' : '#3b82f6';
-          const returnColor = isSel ? '#fca5a5' : '#ef4444';
+          const supplyColor = isSel ? '#fca5a5' : '#ef4444'; // подача — красная
+          const returnColor = isSel ? '#60a5fa' : '#3b82f6'; // обратка — синяя
 
           return (
             <g key={edge.id} onClick={e => { e.stopPropagation(); onEdgeClick(edge.id); }}
@@ -351,12 +354,12 @@ export default function GraphCanvas({
               <path d={d} stroke="transparent" strokeWidth={20} fill="none" />
               {/* Тень */}
               <path d={d} stroke="#000" strokeWidth={7} fill="none" strokeLinecap="round" opacity={0.2} />
-              {/* Обратка (красная) — смещена чуть вниз/вправо */}
+              {/* Обратка (синяя) — смещена чуть вниз/вправо, сплошная */}
               <path d={d} stroke={returnColor} strokeWidth={isSel ? 2.5 : 1.8}
-                fill="none" strokeLinecap="round" strokeDasharray="6 3"
+                fill="none" strokeLinecap="round"
                 style={{ transform: 'translate(2px, 2px)' }}
                 markerEnd="url(#arr-ret)" />
-              {/* Подача (синяя) — поверх */}
+              {/* Подача (красная) — поверх, сплошная */}
               <path d={d} stroke={supplyColor} strokeWidth={isSel ? 2.5 : 1.8}
                 fill="none" strokeLinecap="round"
                 markerEnd="url(#arr)" />
@@ -372,7 +375,7 @@ export default function GraphCanvas({
                     {edge.id}
                   </text>
                   <line x1={28} y1={-4} x2={44} y2={-4} stroke={supplyColor} strokeWidth={1.5} />
-                  <line x1={28} y1={-1} x2={44} y2={-1} stroke={returnColor} strokeWidth={1.5} strokeDasharray="3 2" />
+                  <line x1={28} y1={-1} x2={44} y2={-1} stroke={returnColor} strokeWidth={1.5} />
                   {/* Длина или диаметр */}
                   <text x={0} y={10} fontSize={7} fill={isSel ? '#93c5fd' : '#475569'}>
                     {res
