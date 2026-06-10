@@ -1,60 +1,49 @@
 /**
- * Hydraulic Calculation Engine v4.0
- * Edges = трубы (несут pipeProps.length)
- * Nodes = компоненты (pump, tee, elbow, radiator)
+ * Hydraulic Calculation Engine v5.0 — двухтрубная система
  *
- * Критерии подбора диаметра:
- *  1. Оптимальная скорость: 0.3 – 0.5 м/с
- *  2. Если не укладывается: допустимый диапазон до maxVelocity
- *  3. Автокоррекция: если суммарные потери на критическом пути > 20 кПа,
- *     повторный проход с увеличением диаметров на "узких" участках
+ * Ключевая идея для двухтрубной (тройниковой) системы:
+ * - Граф содержит ЦИКЛЫ (подача → радиатор → обратка → насос).
+ * - Нельзя использовать простой BFS/DFS-дерево, т.к. он "рвёт" циклы.
+ * - Правильный подход: найти путь от насоса до каждого радиатора
+ *   через ветку ПОДАЧИ (не через обратку), посчитать ΔP этого пути.
+ * - Насос подбирается по МАКСИМАЛЬНОМУ ΔP среди всех веток (критический путь).
+ * - Расход насоса = СУММА расходов всех радиаторов.
+ *
+ * Алгоритм определения ветки подачи vs обратки:
+ * - Запускаем BFS от насоса по ненаправленному графу.
+ * - Для каждого радиатора ищем кратчайший путь от насоса.
+ * - Этот путь и есть "подача" для данного радиатора.
+ * - ΔP ветки = сумма потерь всех труб, тройников, углов на этом пути.
  */
 import { PIPE_TYPES } from './pipeStandards';
 import { WATER, ZETA } from './hydraulicGraph';
 
-const MIN_FLOW_LPM   = 0.65;
-const V_OPT_MIN      = 0.3;   // м/с — нижний предел оптимальной скорости
-const V_OPT_MAX      = 0.5;   // м/с — верхний предел оптимальной скорости
-const MAX_DP_SYSTEM  = 20000; // Па — максимальное допустимое сопротивление сети (20 кПа)
+const MIN_FLOW_LPM  = 0.65;
+const V_OPT_MIN     = 0.3;
+const V_OPT_MAX     = 0.5;
+const MAX_DP_SYSTEM = 20000; // Па (20 кПа)
 
-/**
- * Подбор диаметра трубы по расходу и длине участка.
- * Приоритет: скорость в диапазоне [0.3, 0.5] м/с.
- * Если ни один размер не попадает в диапазон:
- *   - все слишком быстрые → берём максимальный диаметр
- *   - все слишком медленные → берём минимальный диаметр
- * @param {number} flowLpm  - расход, л/мин
- * @param {string} pipeType - тип трубы
- * @param {number} [forceMinInner] - принудительный минимальный внутренний диаметр (мм)
- */
+// ─── Подбор диаметра ──────────────────────────────────────────────────────────
 function selectPipeSize(flowLpm, pipeType, forceMinInner = 0) {
   const spec = PIPE_TYPES[pipeType];
   if (!spec) return null;
   const flowM3s = flowLpm / 60000;
 
-  let optimal = null;   // первый размер, где v ∈ [0.3, 0.5]
-  let fallback = null;  // первый размер, где v ≤ maxVelocity
-  let largest  = null;  // самый большой доступный (если всё равно быстро)
+  let optimal = null;
+  let fallback = null;
+  let largest  = null;
 
   for (const size of spec.sizes) {
+    if (size.inner < forceMinInner) continue;
     const d = size.inner / 1000;
     const v = flowM3s / (Math.PI * d * d / 4);
     const enriched = { ...size, velocity: v };
 
-    // Учёт принудительного минимального диаметра
-    if (size.inner < forceMinInner) continue;
-
     if (!largest || size.inner > largest.inner) largest = enriched;
-
-    if (v >= V_OPT_MIN && v <= V_OPT_MAX && !optimal) {
-      optimal = enriched;
-    }
-    if (v <= spec.maxVelocity && !fallback) {
-      fallback = enriched;
-    }
+    if (v >= V_OPT_MIN && v <= V_OPT_MAX && !optimal) optimal = enriched;
+    if (v <= spec.maxVelocity && !fallback) fallback = enriched;
   }
 
-  // Если принудительный минимум "отрезал" все размеры — берём наибольший
   if (!optimal && !fallback && !largest) {
     const last = spec.sizes[spec.sizes.length - 1];
     const d = last.inner / 1000;
@@ -84,7 +73,6 @@ function pipePressureDrop(flowLpm, lengthM, size, pipeType) {
   return f * (lengthM / d) * (WATER.density * v * v / 2);
 }
 
-/** Удельные потери давления Па/м для данного участка */
 function specificPressureDrop(flowLpm, size, pipeType) {
   return pipePressureDrop(flowLpm, 1, size, pipeType);
 }
@@ -93,51 +81,81 @@ function localDrop(zeta, v) {
   return zeta * WATER.density * v * v / 2;
 }
 
-/** DFS-обход дерева от корня (насос) вниз для суммирования расходов снизу вверх */
-function buildFlowsByDFS(pumpId, adjOut, radFlow, nodeIds) {
-  const nodeFlow = {};
-  nodeIds.forEach(id => (nodeFlow[id] = radFlow[id] || 0));
+/**
+ * BFS: находит кратчайший путь (по числу рёбер) от startId до targetId.
+ * Возвращает массив рёбер [{edgeId, fromNodeId, toNodeId}] или null если пути нет.
+ * Параметр excludeNodeId: узел, через который НЕ надо идти (обычно сам радиатор-target,
+ * чтобы не пройти через него дважды).
+ */
+function bfsPath(startId, targetId, adjUndirected) {
+  if (startId === targetId) return [];
+  const prev = new Map(); // nodeId → {edgeId, fromNodeId}
+  const visited = new Set([startId]);
+  const queue = [startId];
 
-  // Рекурсивный DFS: возвращает суммарный расход через узел
-  function dfs(id, visited) {
-    if (visited.has(id)) return nodeFlow[id] || 0;
-    visited.add(id);
-    const children = adjOut[id] || [];
-    for (const lnk of children) {
-      const childFlow = dfs(lnk.nodeId, visited);
-      nodeFlow[id] = (nodeFlow[id] || 0) + childFlow;
+  while (queue.length > 0) {
+    const cur = queue.shift();
+    for (const lnk of adjUndirected[cur] || []) {
+      if (visited.has(lnk.nodeId)) continue;
+      visited.add(lnk.nodeId);
+      prev.set(lnk.nodeId, { edgeId: lnk.edgeId, fromNodeId: cur });
+      if (lnk.nodeId === targetId) {
+        // Восстанавливаем путь
+        const path = [];
+        let node = targetId;
+        while (prev.has(node)) {
+          const { edgeId, fromNodeId } = prev.get(node);
+          path.unshift({ edgeId, fromNodeId, toNodeId: node });
+          node = fromNodeId;
+        }
+        return path;
+      }
+      queue.push(lnk.nodeId);
     }
-    return nodeFlow[id] || 0;
+  }
+  return null; // путь не найден
+}
+
+/**
+ * Для каждого тройника определяем расход через него:
+ * суммируем расходы всех радиаторов, чьи пути подачи проходят через этот тройник.
+ */
+function buildNodeFlows(pumpId, radiators, radFlow, adjUndirected) {
+  const nodeFlow = {};
+
+  for (const rad of radiators) {
+    const path = bfsPath(pumpId, rad.id, adjUndirected);
+    if (!path) continue;
+    const q = radFlow[rad.id] || 0;
+    for (const seg of path) {
+      // Добавляем расход радиатора к каждому промежуточному узлу
+      nodeFlow[seg.fromNodeId] = (nodeFlow[seg.fromNodeId] || 0) + q;
+      nodeFlow[seg.toNodeId]   = (nodeFlow[seg.toNodeId]   || 0) + q;
+    }
   }
 
-  dfs(pumpId, new Set());
   return nodeFlow;
 }
 
-/** Найти критический путь от насоса до любого радиатора (максимальный суммарный ΔP) */
-function findCriticalPathDp(pump, radiators, adjOut, elementResults) {
-  let maxDp = 0;
-  let criticalPath = [];
+/**
+ * Строим edgeFlow: для каждого ребра — суммарный расход радиаторов,
+ * чьи пути ПОДАЧИ проходят через это ребро.
+ * Это правильный подход для двухтрубной системы:
+ * ближние к насосу участки несут суммарный расход всех "дальних" радиаторов.
+ */
+function buildEdgeFlows(pumpId, radiators, radFlow, adjUndirected) {
+  const edgeFlow = {};
 
   for (const rad of radiators) {
-    // DFS с накоплением ΔP
-    function dfsPath(id, dp, path) {
-      if (id === rad.id) {
-        if (dp > maxDp) { maxDp = dp; criticalPath = [...path, id]; }
-        return;
-      }
-      for (const lnk of adjOut[id] || []) {
-        const edgeRes = elementResults[lnk.edgeId] || {};
-        const nodeRes = elementResults[lnk.nodeId] || {};
-        const addDp = (edgeRes.pressureLoss || 0)
-          + (nodeRes.pressureLoss || nodeRes.pressureLossPass || 0);
-        dfsPath(lnk.nodeId, dp + addDp, [...path, id]);
-      }
+    const path = bfsPath(pumpId, rad.id, adjUndirected);
+    if (!path) continue;
+    const q = radFlow[rad.id] || 0;
+    for (const seg of path) {
+      edgeFlow[seg.edgeId] = (edgeFlow[seg.edgeId] || 0) + q;
     }
-    dfsPath(pump.id, 0, []);
   }
 
-  return { maxDp, criticalPath };
+  return edgeFlow;
 }
 
 export function calcHydraulicGraph(nodes, edges, globalParams) {
@@ -171,7 +189,7 @@ export function calcHydraulicGraph(nodes, edges, globalParams) {
     if (!l || l <= 0) return { error: `Труба ${e.id}: укажите длину` };
   }
 
-  // ── 3. Ненаправленный граф (не зависит от порядка кликов пользователя) ──────
+  // ── 3. Ненаправленный граф ─────────────────────────────────────────────────
   const adjUndirected = {};
   nodes.forEach(n => { adjUndirected[n.id] = []; });
   edges.forEach(e => {
@@ -179,49 +197,36 @@ export function calcHydraulicGraph(nodes, edges, globalParams) {
     adjUndirected[e.toNodeId]?.push({ edgeId: e.id, nodeId: e.fromNodeId });
   });
 
-  // ── 4. BFS от насоса: определяем направление потока автоматически ──────────
-  // Строим правильный adjOut независимо от того, как пользователь соединял порты
-  const adjOut = {};
-  nodes.forEach(n => { adjOut[n.id] = []; });
+  // ── 4. Расходы по рёбрам и узлам (двухтрубная логика) ─────────────────────
+  // edgeFlow: для каждого ребра суммируем расходы всех радиаторов,
+  // чьи кратчайшие пути от насоса проходят через это ребро.
+  const edgeFlow = buildEdgeFlows(pump.id, radiators, radFlow, adjUndirected);
+  const nodeFlow = buildNodeFlows(pump.id, radiators, radFlow, adjUndirected);
 
-  const bfsVisited = new Set([pump.id]);
-  const bfsQueue = [pump.id];
-  while (bfsQueue.length > 0) {
-    const cur = bfsQueue.shift();
-    for (const lnk of adjUndirected[cur] || []) {
-      if (!bfsVisited.has(lnk.nodeId)) {
-        bfsVisited.add(lnk.nodeId);
-        adjOut[cur].push({ edgeId: lnk.edgeId, nodeId: lnk.nodeId });
-        bfsQueue.push(lnk.nodeId);
-      }
-    }
-  }
-
-  const nodeFlow = buildFlowsByDFS(pump.id, adjOut, radFlow, nodes.map(n => n.id));
-
-  console.log('[HydroCalc] adjOut:', JSON.stringify(adjOut));
-  console.log('[HydroCalc] radFlow:', JSON.stringify(radFlow));
-  console.log('[HydroCalc] nodeFlow after DFS:', JSON.stringify(nodeFlow));
-
-  // Поток через каждое ребро = поток узла-потребителя (to)
-  const edgeFlow = {};
+  // Для рёбер, не попавших ни в один путь подачи (рёбра обратки) —
+  // используем расход узла-источника (меньшего из двух концов)
   edges.forEach(e => {
-    const flow = nodeFlow[e.toNodeId] || 0;
-    edgeFlow[e.id] = flow;
-    console.log(`[HydroCalc] edge ${e.id}: from=${e.fromNodeId}(port:${e.fromPortId}) → to=${e.toNodeId}(port:${e.toPortId}), flow=${flow} л/мин`);
+    if (!edgeFlow[e.id]) {
+      // Это ребро обратки или изолированное — берём минимальный расход концов
+      const flowA = nodeFlow[e.fromNodeId] || 0;
+      const flowB = nodeFlow[e.toNodeId]   || 0;
+      edgeFlow[e.id] = Math.max(flowA, flowB, MIN_FLOW_LPM);
+    }
   });
 
-  // ── 5. Первый проход: подбор диаметров и потерь ────────────────────────────
+  console.log('[HydroCalc v5] edgeFlow:', JSON.stringify(edgeFlow));
+  console.log('[HydroCalc v5] nodeFlow:', JSON.stringify(nodeFlow));
+
+  // ── 5. Расчёт диаметров и потерь ──────────────────────────────────────────
   function calcAllResults(forceMinInnerByEdge = {}) {
     const res = {};
 
-    // Рёбра (трубы)
+    // Трубы
     for (const e of edges) {
-      const flow = edgeFlow[e.id];
+      const flow = edgeFlow[e.id] || MIN_FLOW_LPM;
       const len  = parseFloat(e.pipeProps.length);
       const minInner = forceMinInnerByEdge[e.id] || 0;
       const size = selectPipeSize(flow, pipeType, minInner);
-      console.log(`[HydroCalc] selectPipeSize edge ${e.id}: flow=${flow} л/мин → size=`, size ? `Ø${size.outer}×${size.wall} (inner=${size.inner}mm), v=${size.velocity?.toFixed(3)}м/с` : 'null');
       const dp   = pipePressureDrop(flow, len, size, pipeType);
       res[e.id] = {
         flowRate: flow,
@@ -232,41 +237,23 @@ export function calcHydraulicGraph(nodes, edges, globalParams) {
       };
     }
 
-    // Тройники: магистраль = max(selectPipeSize(total), диаметры отводов)
-    for (const n of nodes.filter(n => n.type === 'tee')) {
-      const outE    = edges.find(e => e.fromNodeId === n.id && e.fromPortId === 'out');
-      const branchE = edges.find(e => e.fromNodeId === n.id && e.fromPortId === 'branch');
-      const fPass   = outE    ? (edgeFlow[outE.id]    || 0) : 0;
-      const fBranch = branchE ? (edgeFlow[branchE.id] || 0) : 0;
-      const total   = fPass + fBranch;
-
-      // Подбираем диаметр по суммарному расходу
-      let bestSize = selectPipeSize(total, pipeType);
-
-      // Инженерное ограничение: магистраль >= диаметров отводов
-      const outSize    = res[outE?.id]?.size;
-      const branchSize = res[branchE?.id]?.size;
-      const minOuterInner = Math.max(
-        outSize?.inner    || 0,
-        branchSize?.inner || 0,
-      );
-      if (bestSize && bestSize.inner < minOuterInner) {
-        bestSize = selectPipeSize(total, pipeType, minOuterInner);
-      }
-
-      const v = bestSize?.velocity || 0;
+    // Тройники
+    for (const n of nodes.filter(nd => nd.type === 'tee')) {
+      const flow = nodeFlow[n.id] || 0;
+      const size = selectPipeSize(flow, pipeType);
+      const v = size?.velocity || 0;
       res[n.id] = {
-        flowRate: total,
-        size: bestSize,
+        flowRate: flow,
+        size,
         pressureLossPass:   localDrop(zeta.tee_pass,   v),
         pressureLossBranch: localDrop(zeta.tee_branch, v),
-        pressureLoss: localDrop(zeta.tee_pass, v), // для накопления в критическом пути
+        pressureLoss: localDrop(zeta.tee_pass, v),
       };
     }
 
     // Углы
-    for (const n of nodes.filter(n => n.type === 'elbow')) {
-      const flow = nodeFlow[n.id] || 0;
+    for (const n of nodes.filter(nd => nd.type === 'elbow')) {
+      const flow = nodeFlow[n.id] || MIN_FLOW_LPM;
       const size = selectPipeSize(flow, pipeType);
       const v = size?.velocity || 0;
       res[n.id] = { flowRate: flow, size, pressureLoss: localDrop(zeta.elbow_90, v) };
@@ -285,46 +272,70 @@ export function calcHydraulicGraph(nodes, edges, globalParams) {
 
   // ── 6. Первый расчёт ───────────────────────────────────────────────────────
   let elementResults = calcAllResults();
-  let { maxDp, criticalPath } = findCriticalPathDp(pump, radiators, adjOut, elementResults);
 
-  // ── 7. Автокоррекция: если ΔP > 20 кПа — увеличиваем диаметры на критическом пути ──
+  // ── 7. Критический путь: для каждого радиатора считаем ΔP пути подачи ─────
+  // ΔP_ветки = сумма потерь в трубах + фитингах на пути от насоса до радиатора
+  function calcBranchDp(radId) {
+    const path = bfsPath(pump.id, radId, adjUndirected);
+    if (!path) return 0;
+    let dp = 0;
+    for (const seg of path) {
+      dp += elementResults[seg.edgeId]?.pressureLoss || 0;
+      // Добавляем потери на промежуточных узлах (тройники, углы)
+      const nd = nodes.find(n => n.id === seg.toNodeId);
+      if (nd && nd.type !== 'pump' && nd.type !== 'radiator') {
+        dp += elementResults[nd.id]?.pressureLoss || 0;
+      }
+    }
+    // Добавляем потери самого радиатора
+    dp += elementResults[radId]?.pressureLoss || 0;
+    return dp;
+  }
+
+  let maxDp = 0;
+  let criticalRadId = null;
+  for (const rad of radiators) {
+    const dp = calcBranchDp(rad.id);
+    console.log(`[HydroCalc v5] branch ΔP для ${rad.id}: ${(dp/1000).toFixed(2)} кПа`);
+    if (dp > maxDp) { maxDp = dp; criticalRadId = rad.id; }
+  }
+
+  // ── 8. Автокоррекция при ΔP > 20 кПа ─────────────────────────────────────
   const warnings = [];
-  if (maxDp > MAX_DP_SYSTEM) {
-    warnings.push(`Сопротивление сети ${(maxDp / 1000).toFixed(1)} кПа превышает 20 кПа. Выполняется автокоррекция диаметров.`);
+  if (maxDp > MAX_DP_SYSTEM && criticalRadId) {
+    warnings.push(`Сопротивление критической ветки ${(maxDp/1000).toFixed(1)} кПа > 20 кПа. Выполняется автокоррекция.`);
 
-    // Для каждого ребра критического пути ищем следующий диаметр вверх
+    const critPath = bfsPath(pump.id, criticalRadId, adjUndirected);
     const forceMinInnerByEdge = {};
     const spec = PIPE_TYPES[pipeType];
 
-    for (const nodeId of criticalPath) {
-      // Ищем ребро, ведущее к этому узлу (входящее)
-      const inEdge = edges.find(e => e.toNodeId === nodeId);
-      if (!inEdge) continue;
-      const currentSize = elementResults[inEdge.id]?.size;
-      if (!currentSize) continue;
-
-      // Ищем следующий диаметр вверх в таблице
-      const idx = spec.sizes.findIndex(s => s.inner === currentSize.inner);
-      if (idx >= 0 && idx < spec.sizes.length - 1) {
-        forceMinInnerByEdge[inEdge.id] = spec.sizes[idx + 1].inner;
+    if (critPath) {
+      for (const seg of critPath) {
+        const currentSize = elementResults[seg.edgeId]?.size;
+        if (!currentSize) continue;
+        const idx = spec.sizes.findIndex(s => s.inner === currentSize.inner);
+        if (idx >= 0 && idx < spec.sizes.length - 1) {
+          forceMinInnerByEdge[seg.edgeId] = spec.sizes[idx + 1].inner;
+        }
       }
     }
 
-    // Пересчёт с увеличенными диаметрами
     if (Object.keys(forceMinInnerByEdge).length > 0) {
       elementResults = calcAllResults(forceMinInnerByEdge);
-      const recalc = findCriticalPathDp(pump, radiators, adjOut, elementResults);
-      maxDp = recalc.maxDp;
-
+      maxDp = 0;
+      for (const rad of radiators) {
+        const dp = calcBranchDp(rad.id);
+        if (dp > maxDp) maxDp = dp;
+      }
       if (maxDp > MAX_DP_SYSTEM) {
-        warnings.push(`После коррекции: ${(maxDp / 1000).toFixed(1)} кПа. Рекомендуется увеличить диаметры магистрали вручную.`);
+        warnings.push(`После коррекции: ${(maxDp/1000).toFixed(1)} кПа. Рекомендуется увеличить диаметры магистрали.`);
       } else {
-        warnings.push(`После коррекции сопротивление: ${(maxDp / 1000).toFixed(1)} кПа ✓`);
+        warnings.push(`После коррекции: ${(maxDp/1000).toFixed(1)} кПа ✓`);
       }
     }
   }
 
-  // ── 8. Насос ───────────────────────────────────────────────────────────────
+  // ── 9. Насос ───────────────────────────────────────────────────────────────
   const pumpFlow = Object.values(radFlow).reduce((a, b) => a + b, 0);
   const pumpHead = maxDp / (WATER.density * 9.81);
   elementResults[pump.id] = { flowRate: pumpFlow, pressure: maxDp, head: pumpHead };
