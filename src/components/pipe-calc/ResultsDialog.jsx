@@ -79,6 +79,41 @@ function ElementResultRow({ id, res, nodes, edges }) {
   );
 }
 
+function buildSpecification(nodes, edges) {
+  const radiatorCount = (nodes || []).filter(n => n.type === 'radiator').length;
+  const teeCount      = (nodes || []).filter(n => n.type === 'tee').length;
+  const elbowCount    = (nodes || []).filter(n => n.type === 'elbow').length;
+  const hasPump       = (nodes || []).some(n => n.type === 'pump');
+
+  // Группируем трубы по типоразмеру (outer×wall)
+  const pipeGroups = {};
+  (edges || []).forEach(e => {
+    const res_size = null; // размер берётся из results, передаём снаружи
+    const lenOne = parseFloat(e.pipeProps?.length) || 0;
+    pipeGroups['total'] = (pipeGroups['total'] || 0) + lenOne * 2;
+  });
+
+  return [
+    { name: 'Циркуляционный насос',          qty: hasPump ? 1 : 0,           unit: 'шт' },
+    { name: 'Узел нижнего подключения (H-блок)', qty: radiatorCount,          unit: 'компл.' },
+    { name: 'Соединение трубы (фитинг)',       qty: radiatorCount * 2,        unit: 'шт' },
+    { name: 'Тройник',                         qty: teeCount,                 unit: 'шт' },
+    { name: 'Угол 90°',                        qty: elbowCount,               unit: 'шт' },
+  ];
+}
+
+function buildPipeSpec(edges, results) {
+  // Группируем длины по типоразмеру трубы
+  const groups = {};
+  (edges || []).forEach(e => {
+    const res = results?.[e.id];
+    const key = res?.size ? `Ø${res.size.outer}×${res.size.wall} мм` : 'Не рассчитано';
+    const lenOne = parseFloat(e.pipeProps?.length) || 0;
+    groups[key] = (groups[key] || 0) + lenOne * 2; // ×2 подача+обратка
+  });
+  return Object.entries(groups).map(([size, len]) => ({ size, len }));
+}
+
 export default function ResultsDialog({ open, onClose, results, pumpHead, pumpFlow, nodes, edges, globalParams }) {
   if (!results) return null;
 
@@ -87,6 +122,8 @@ export default function ResultsDialog({ open, onClose, results, pumpHead, pumpFl
   const H = pumpHead ?? pumpRes?.head ?? 0;
   const Q = pumpFlow ?? pumpRes?.flowRate ?? 0;
   const recommended = selectPump(H, Q);
+  const specification = buildSpecification(nodes, edges);
+  const pipeSpec = buildPipeSpec(edges, results);
 
   const handleDownloadPDF = () => {
     const doc = new jsPDF({ unit: 'mm', format: 'a4' });
@@ -168,6 +205,38 @@ export default function ResultsDialog({ open, onClose, results, pumpHead, pumpFl
     });
     y += 4;
 
+    // Спецификация материалов
+    if (y > 240) { doc.addPage(); y = 20; }
+    doc.setFontSize(12);
+    doc.setTextColor(30, 58, 95);
+    doc.text('Спецификация материалов', 20, y);
+    y += 6;
+    doc.line(20, y, W - 20, y);
+    y += 6;
+    doc.setFontSize(10);
+    pipeSpec.forEach(({ size, len }) => {
+      if (y > 270) { doc.addPage(); y = 20; }
+      doc.setTextColor(71, 85, 105);
+      doc.text(`Труба ${size}`, 22, y);
+      doc.setTextColor(30, 41, 59);
+      doc.setFont(undefined, 'bold');
+      doc.text(`${len.toFixed(1)} м`, W - 22, y, { align: 'right' });
+      doc.setFont(undefined, 'normal');
+      y += 6;
+    });
+    specification.forEach(item => {
+      if (item.qty <= 0) return;
+      if (y > 270) { doc.addPage(); y = 20; }
+      doc.setTextColor(71, 85, 105);
+      doc.text(item.name, 22, y);
+      doc.setTextColor(30, 41, 59);
+      doc.setFont(undefined, 'bold');
+      doc.text(`${item.qty} ${item.unit}`, W - 22, y, { align: 'right' });
+      doc.setFont(undefined, 'normal');
+      y += 6;
+    });
+    y += 4;
+
     // Рекомендация насоса
     if (recommended) {
       if (y > 240) { doc.addPage(); y = 20; }
@@ -223,6 +292,29 @@ export default function ResultsDialog({ open, onClose, results, pumpHead, pumpFl
           <p style={{ fontSize: 10, color: D.muted, textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 6 }}>Элементы схемы</p>
           {Object.entries(results).map(([id, res]) => (
             <ElementResultRow key={id} id={id} res={res} nodes={nodes} edges={edges} />
+          ))}
+        </div>
+
+        {/* Спецификация материалов */}
+        <div className="rounded-lg p-4" style={{ background: D.card, border: `1px solid ${D.border}` }}>
+          <p style={{ fontSize: 10, color: D.muted, textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 6 }}>Спецификация материалов</p>
+          {/* Трубы по типоразмерам */}
+          {pipeSpec.map(({ size, len }) => (
+            <div key={size} className="flex justify-between items-center py-1.5 border-b" style={{ borderColor: D.border }}>
+              <span style={{ fontSize: 12, color: D.text }}>Труба {size}</span>
+              <span style={{ fontSize: 13, fontWeight: 700, fontFamily: 'monospace', color: D.warn }}>
+                {len.toFixed(1)} <span style={{ fontSize: 11, fontWeight: 400, color: D.muted }}>м</span>
+              </span>
+            </div>
+          ))}
+          {/* Остальные позиции */}
+          {specification.map(item => item.qty > 0 && (
+            <div key={item.name} className="flex justify-between items-center py-1.5 border-b" style={{ borderColor: D.border }}>
+              <span style={{ fontSize: 12, color: D.text }}>{item.name}</span>
+              <span style={{ fontSize: 13, fontWeight: 700, fontFamily: 'monospace', color: D.bright }}>
+                {item.qty} <span style={{ fontSize: 11, fontWeight: 400, color: D.muted }}>{item.unit}</span>
+              </span>
+            </div>
           ))}
         </div>
 
