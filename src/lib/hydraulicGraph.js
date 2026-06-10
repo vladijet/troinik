@@ -92,9 +92,46 @@ export function getPortAbsPos(node, portId) {
   return { x: node.x + rp.x, y: node.y + rp.y, dir: rotateDir(port.dir, rot) };
 }
 
+// ─── Flow-Aware: определяем направление потока от насоса BFS ─────────────────
+// Возвращает Map: nodeId → Set<portId> где порт является «входом» (со стороны насоса)
+export function computeFlowDirections(nodes, edges) {
+  const pump = nodes.find(n => n.type === 'pump');
+  if (!pump) return { inPorts: new Set(), flowEdges: new Set() };
+
+  // Строим двунаправленный граф рёбер
+  const adj = {}; // nodeId → [{edgeId, portId, neighborId, neighborPortId}]
+  nodes.forEach(n => (adj[n.id] = []));
+  edges.forEach(e => {
+    adj[e.fromNodeId]?.push({ edgeId: e.id, portId: e.fromPortId, neighborId: e.toNodeId, neighborPortId: e.toPortId });
+    adj[e.toNodeId]?.push({ edgeId: e.id, portId: e.toPortId, neighborId: e.fromNodeId, neighborPortId: e.fromPortId });
+  });
+
+  // BFS от насоса
+  const visited = new Set([pump.id]);
+  const queue = [pump.id];
+  // inPorts: набор строк "nodeId:portId" — порты, которые являются ВХОДАМИ (со стороны насоса)
+  const inPorts = new Set();
+  // flowEdges: edgeId → { from: nodeId, to: nodeId } — направление потока
+  const flowEdges = {};
+
+  while (queue.length) {
+    const id = queue.shift();
+    for (const link of adj[id] || []) {
+      if (visited.has(link.neighborId)) continue;
+      visited.add(link.neighborId);
+      // Порт соседа, куда пришёл поток — это его IN
+      inPorts.add(`${link.neighborId}:${link.neighborPortId}`);
+      flowEdges[link.edgeId] = { from: id, to: link.neighborId };
+      queue.push(link.neighborId);
+    }
+  }
+  return { inPorts, flowEdges };
+}
+
 // ─── Open ports (для проверки топологии) ─────────────────────────────────────
 // out-порт радиатора НЕ считается ошибкой — радиатор является терминальным узлом
-export function getOpenPorts(nodes, edges) {
+// Заглушённые порты (cappedPorts) не считаются ошибкой
+export function getOpenPorts(nodes, edges, cappedPorts = new Set()) {
   const used = new Set(edges.flatMap(e => [
     `${e.fromNodeId}:${e.fromPortId}`,
     `${e.toNodeId}:${e.toPortId}`,
@@ -104,7 +141,9 @@ export function getOpenPorts(nodes, edges) {
     const config = NODE_PORT_CONFIG[node.type];
     if (!config) return;
     Object.entries(config).forEach(([portId]) => {
-      if (used.has(`${node.id}:${portId}`)) return;
+      const key = `${node.id}:${portId}`;
+      if (used.has(key)) return;
+      if (cappedPorts.has(key)) return; // заглушён
       // out-порт радиатора разрешено оставлять свободным — конец ветки
       if (node.type === 'radiator' && portId === 'out') return;
       open.push({ nodeId: node.id, portId });
@@ -114,12 +153,12 @@ export function getOpenPorts(nodes, edges) {
 }
 
 // ─── Topology validation ──────────────────────────────────────────────────────
-export function validateTopology(nodes, edges) {
+export function validateTopology(nodes, edges, cappedPorts = new Set()) {
   const errors = [];
   const nodeMap = Object.fromEntries(nodes.map(n => [n.id, n]));
 
   // 1. Открытые порты (out радиатора уже исключён в getOpenPorts)
-  const openPorts = getOpenPorts(nodes, edges);
+  const openPorts = getOpenPorts(nodes, edges, cappedPorts);
   if (openPorts.length > 0) {
     errors.push(`Незакрытые порты: ${openPorts.length} шт. Подключите все точки.`);
   }

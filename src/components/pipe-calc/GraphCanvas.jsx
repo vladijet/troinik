@@ -88,21 +88,51 @@ function RadiatorSymbol({ sel, props, res }) {
 }
 
 // ─── Порт ─────────────────────────────────────────────────────────────────────
-function PortDot({ px, py, portId, nodeId, isOpen, isError, onPortClick }) {
-  const color = isError ? '#ef4444' : isOpen ? '#4ade80' : '#1e3a5f';
-  const r = isOpen ? 6 : 4;
+function PortDot({ px, py, portId, nodeId, nodeType, isOpen, isError, isCapped, isIn, onPortClick }) {
+  const color = isError ? '#ef4444'
+    : isCapped ? '#475569'
+    : isOpen ? '#4ade80'
+    : '#1e3a5f';
+  const r = isOpen && !isCapped ? 6 : 4;
+
+  // Метка порта: только для открытых незаглушённых портов tee/elbow
+  const showLabel = isOpen && !isCapped && (nodeType === 'tee' || nodeType === 'elbow');
+  const label = isIn ? 'IN' : (portId === 'branch' ? 'BR' : 'OUT');
+  const labelColor = isIn ? '#60a5fa' : portId === 'branch' ? '#34d399' : '#f59e0b';
+
+  // Смещение метки (чтобы не перекрывала порт)
+  const labelOff = { x: px > 0 ? 12 : px < 0 ? -12 : 0, y: py > 0 ? 14 : py < 0 ? -14 : 0 };
+
   return (
     <g transform={`translate(${px},${py})`}
       onClick={e => { e.stopPropagation(); onPortClick(nodeId, portId); }}
       style={{ cursor: 'pointer' }}>
-      {isOpen && <circle r={12} fill="none" stroke={isError ? '#ef4444' : '#4ade80'} strokeWidth={1.2} opacity={0.3} />}
+      {isOpen && !isCapped && (
+        <circle r={12} fill="none" stroke={isError ? '#ef4444' : '#4ade80'} strokeWidth={1.2} opacity={0.3} />
+      )}
       <circle r={r} fill={color} stroke={BG} strokeWidth={1} />
+      {/* Заглушка: крестик */}
+      {isCapped && (
+        <g stroke="#ef4444" strokeWidth={1.5} strokeLinecap="round">
+          <line x1={-4} y1={-4} x2={4} y2={4} />
+          <line x1={4} y1={-4} x2={-4} y2={4} />
+          <circle r={7} fill="none" stroke="#ef444488" strokeWidth={1} />
+        </g>
+      )}
+      {/* Метка IN/OUT/BR */}
+      {showLabel && (
+        <text x={labelOff.x} y={labelOff.y} textAnchor="middle"
+          fontSize={7} fontWeight="700" fill={labelColor}
+          style={{ pointerEvents: 'none', userSelect: 'none' }}>
+          {label}
+        </text>
+      )}
     </g>
   );
 }
 
 // ─── Узел ─────────────────────────────────────────────────────────────────────
-function GraphNode({ node, sel, res, usedPorts, errorPorts, onMouseDown, onClick, onPortClick, onRotate }) {
+function GraphNode({ node, sel, res, usedPorts, errorPorts, cappedPorts, inPorts, onMouseDown, onClick, onPortClick, onRotate }) {
   const config = NODE_PORT_CONFIG[node.type];
   const size   = NODE_SIZE[node.type];
   if (!config) return null;
@@ -134,9 +164,11 @@ function GraphNode({ node, sel, res, usedPorts, errorPorts, onMouseDown, onClick
         const key = `${node.id}:${pid}`;
         const isOpen = !usedPorts.has(key);
         const isError = errorPorts.has(key);
+        const isCapped = cappedPorts.has(key);
+        const isIn = inPorts.has(key);
         return (
-          <PortDot key={pid} px={rx} py={ry} portId={pid} nodeId={node.id}
-            isOpen={isOpen} isError={isError} onPortClick={onPortClick} />
+          <PortDot key={pid} px={rx} py={ry} portId={pid} nodeId={node.id} nodeType={node.type}
+            isOpen={isOpen} isError={isError} isCapped={isCapped} isIn={isIn} onPortClick={onPortClick} />
         );
       })}
 
@@ -155,7 +187,7 @@ function GraphNode({ node, sel, res, usedPorts, errorPorts, onMouseDown, onClick
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export default function GraphCanvas({
-  nodes, edges, selectedId, results, openPorts,
+  nodes, edges, selectedId, results, openPorts, cappedPorts, inPorts,
   onNodeMove, onNodeClick, onPortClick, onRotate, onEdgeClick,
 }) {
   const svgRef = useRef(null);
@@ -170,6 +202,8 @@ export default function GraphCanvas({
   ]));
 
   const errorPortSet = new Set((openPorts || []).map(p => `${p.nodeId}:${p.portId}`));
+  const cappedSet = cappedPorts || new Set();
+  const inPortSet = inPorts || new Set();
 
   function getSVG(e) {
     const r = svgRef.current.getBoundingClientRect();
@@ -310,6 +344,8 @@ export default function GraphCanvas({
             res={results?.[node.id]}
             usedPorts={usedPorts}
             errorPorts={errorPortSet}
+            cappedPorts={cappedSet}
+            inPorts={inPortSet}
             onMouseDown={e => startDrag(e, node.id)}
             onClick={e => { e.stopPropagation(); onNodeClick(node.id); }}
             onPortClick={onPortClick}

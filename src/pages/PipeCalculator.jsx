@@ -18,7 +18,7 @@ import ElementPanel   from '@/components/pipe-calc/ElementPanel';
 import {
   createNode, createEdge, resetUid,
   NODE_PORT_CONFIG, NODE_SIZE, getPortAbsPos,
-  validateTopology,
+  validateTopology, computeFlowDirections,
 } from '@/lib/hydraulicGraph';
 import { calcHydraulicGraph } from '@/lib/hydraulicCalcEngine';
 import { PIPE_TYPES } from '@/lib/pipeStandards';
@@ -36,9 +36,10 @@ export default function PipeCalculator() {
   const [pendingPort, setPendingPort] = useState(null);
 
   const [results,    setResults]    = useState(null);
-  const [pumpSummary, setPumpSummary] = useState(null); // { pumpHead, pumpFlow }
+  const [pumpSummary, setPumpSummary] = useState(null);
   const [showResults, setShowResults] = useState(false);
-  const [validation, setValidation] = useState(null); // { valid, errors, openPorts }
+  const [validation, setValidation] = useState(null);
+  const [cappedPorts, setCappedPorts] = useState(new Set()); // заглушённые порты "nodeId:portId"
 
   const [globalParams, setGlobalParams] = useState({
     pipeType: 'ppr_pn20', tSupply: 80, tReturn: 60,
@@ -71,15 +72,35 @@ export default function PipeCalculator() {
     setNodes(prev => prev.map(n => n.id === id ? { ...n, x, y } : n));
   }, []);
 
-  // ─── Клик по порту: режим соединения ────────────────────────────────────
-  // Первый клик — запоминаем порт-источник.
-  // Второй клик — создаём ребро (трубу) между ними.
+  // ─── Клик по порту: режим соединения или заглушка ───────────────────────────
   const handlePortClick = useCallback((nodeId, portId) => {
+    const key = `${nodeId}:${portId}`;
+    const occupiedPorts = new Set(edges.flatMap(e => [
+      `${e.fromNodeId}:${e.fromPortId}`, `${e.toNodeId}:${e.toPortId}`,
+    ]));
+
     if (!pendingPort) {
-      // Начало соединения
-      setPendingPort({ nodeId, portId });
-      setSelectedId(nodeId);
-      toast.info('Выберите второй порт для соединения');
+      if (!occupiedPorts.has(key)) {
+        // Клик по заглушённому → снять заглушку
+        if (cappedPorts.has(key)) {
+          setCappedPorts(prev => { const next = new Set(prev); next.delete(key); return next; });
+          setValidation(null);
+          return;
+        }
+        // Начало соединения
+        setPendingPort({ nodeId, portId });
+        setSelectedId(nodeId);
+        toast.info('Выберите второй порт. Кликните по тому же порту ещё раз — чтобы заглушить его.');
+      }
+      return;
+    }
+
+    // Второй клик на тот же порт → заглушить
+    if (pendingPort.nodeId === nodeId && pendingPort.portId === portId) {
+      setPendingPort(null);
+      setCappedPorts(prev => { const next = new Set(prev); next.add(key); return next; });
+      setValidation(null);
+      toast.success('Порт заглушён. Кликните по крестику снова, чтобы снять заглушку.');
       return;
     }
 
@@ -91,11 +112,8 @@ export default function PipeCalculator() {
     }
 
     // Не соединять уже занятые порты повторно
-    const usedPorts = new Set(edges.flatMap(e => [
-      `${e.fromNodeId}:${e.fromPortId}`, `${e.toNodeId}:${e.toPortId}`,
-    ]));
-    if (usedPorts.has(`${pendingPort.nodeId}:${pendingPort.portId}`) ||
-        usedPorts.has(`${nodeId}:${portId}`)) {
+    if (occupiedPorts.has(`${pendingPort.nodeId}:${pendingPort.portId}`) ||
+        occupiedPorts.has(`${nodeId}:${portId}`)) {
       toast.error('Один из портов уже занят');
       setPendingPort(null);
       return;
@@ -166,13 +184,14 @@ export default function PipeCalculator() {
     setPendingPort(null);
     setResults(null);
     setValidation(null);
+    setCappedPorts(new Set());
   }, []);
 
   // ─── Расчёт ─────────────────────────────────────────────────────────────
   const handleCalculate = useCallback(() => {
     try {
       console.log('[Calc] nodes:', nodes.length, 'edges:', edges.length);
-      const val = validateTopology(nodes, edges);
+      const val = validateTopology(nodes, edges, cappedPorts);
       console.log('[Calc] validation:', val);
       setValidation(val);
       if (!val.valid) {
@@ -193,6 +212,7 @@ export default function PipeCalculator() {
 
   const openPorts   = validation ? validation.openPorts : [];
   const hasErrors   = validation && !validation.valid;
+  const { inPorts } = computeFlowDirections(nodes, edges);
 
   return (
     <div className="h-screen flex flex-col" style={{ overflow: 'hidden', background: '#0f172a' }}>
@@ -316,6 +336,8 @@ export default function PipeCalculator() {
             selectedId={pendingPort ? pendingPort.nodeId : selectedId}
             results={results}
             openPorts={openPorts}
+            cappedPorts={cappedPorts}
+            inPorts={inPorts}
             onNodeMove={handleNodeMove}
             onNodeClick={id => { setPendingPort(null); setSelectedId(id); }}
             onPortClick={handlePortClick}
