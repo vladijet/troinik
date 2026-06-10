@@ -88,13 +88,22 @@ const RADIATOR_ADAPTER = {
   stainless:     { name: 'Фитинг-адаптер нержавеющая сталь (обжимная гайка + фиксирующее кольцо + EPDM → Евроконус 3/4")', short: 'Обжимной адаптер нерж./Евроконус 3/4"' },
 };
 
+// Справочник: материал трубы → короткое «инженерное» название для спецификации
+const PIPE_TYPE_LABELS = {
+  ppr_pn20:      'PPR PN20',
+  ppr_pn25:      'PPR PN25',
+  pex:           'PEX',
+  metal_plastic: 'PEX-Al-PEX',
+  stainless:     'Нерж. сталь',
+};
+
 // Справочник: материал трубы → тип тройника и угла
 const FITTING_NAMES = {
-  ppr_pn20:      { tee: 'Тройник ПП (под пайку)', elbow: 'Угол 90° ПП (под пайку)' },
-  ppr_pn25:      { tee: 'Тройник ПП PN25 (под пайку)', elbow: 'Угол 90° ПП PN25 (под пайку)' },
+  ppr_pn20:      { tee: 'Тройник PPR PN20 (под пайку)', elbow: 'Угол 90° PPR PN20 (под пайку)' },
+  ppr_pn25:      { tee: 'Тройник PPR PN25 (под пайку)', elbow: 'Угол 90° PPR PN25 (под пайку)' },
   pex:           { tee: 'Тройник аксиальный PEX', elbow: 'Угол 90° аксиальный PEX' },
-  metal_plastic: { tee: 'Тройник пресс-фитинг МП', elbow: 'Угол 90° пресс-фитинг МП' },
-  stainless:     { tee: 'Тройник пресс (раструб) нерж.', elbow: 'Угол 90° пресс (раструб) нерж.' },
+  metal_plastic: { tee: 'Тройник пресс-фитинг PEX-Al-PEX', elbow: 'Угол 90° пресс-фитинг PEX-Al-PEX' },
+  stainless:     { tee: 'Тройник пресс Нерж. сталь', elbow: 'Угол 90° пресс Нерж. сталь' },
 };
 
 // Получить числовые внешние диаметры труб, подключённых к узлу
@@ -156,12 +165,14 @@ function buildSpecification(nodes, edges, results, pipeType) {
   return items;
 }
 
-function buildPipeSpec(edges, results) {
+function buildPipeSpec(edges, results, pipeType) {
+  const typeLabel = PIPE_TYPE_LABELS[pipeType] || pipeType || '';
   // Группируем длины по типоразмеру трубы
   const groups = {};
   (edges || []).forEach(e => {
     const res = results?.[e.id];
-    const key = res?.size ? `Ø${res.size.outer}×${res.size.wall} мм` : 'Не рассчитано';
+    const sizeStr = res?.size ? `Ø${res.size.outer}×${res.size.wall} мм` : 'Не рассчитано';
+    const key = typeLabel ? `Труба ${typeLabel} ${sizeStr}` : `Труба ${sizeStr}`;
     const lenOne = parseFloat(e.pipeProps?.length) || 0;
     groups[key] = (groups[key] || 0) + lenOne * 2; // ×2 подача+обратка
   });
@@ -177,7 +188,7 @@ export default function ResultsDialog({ open, onClose, results, pumpHead, pumpFl
   const Q = pumpFlow ?? pumpRes?.flowRate ?? 0;
   const recommended = selectPump(H, Q);
   const specification = buildSpecification(nodes, edges, results, globalParams?.pipeType);
-  const pipeSpec = buildPipeSpec(edges, results);
+  const pipeSpec = buildPipeSpec(edges, results, globalParams?.pipeType);
 
   const handleDownloadPDF = () => {
     const doc = new jsPDF({ unit: 'mm', format: 'a4' });
@@ -271,7 +282,7 @@ export default function ResultsDialog({ open, onClose, results, pumpHead, pumpFl
     pipeSpec.forEach(({ size, len }) => {
       if (y > 270) { doc.addPage(); y = 20; }
       doc.setTextColor(71, 85, 105);
-      doc.text(`Труба ${size}`, 22, y);
+      doc.text(size, 22, y);
       doc.setTextColor(30, 41, 59);
       doc.setFont(undefined, 'bold');
       doc.text(`${len.toFixed(1)} м`, W - 22, y, { align: 'right' });
@@ -357,7 +368,7 @@ export default function ResultsDialog({ open, onClose, results, pumpHead, pumpFl
           {/* Трубы по типоразмерам */}
           {pipeSpec.map(({ size, len }) => (
             <div key={size} className="flex justify-between items-center py-1.5 border-b" style={{ borderColor: D.border }}>
-              <span style={{ fontSize: 12, color: D.text }}>Труба {size}</span>
+              <span style={{ fontSize: 12, color: D.text }}>{size}</span>
               <span style={{ fontSize: 13, fontWeight: 700, fontFamily: 'monospace', color: D.warn }}>
                 {len.toFixed(1)} <span style={{ fontSize: 11, fontWeight: 400, color: D.muted }}>м</span>
               </span>
