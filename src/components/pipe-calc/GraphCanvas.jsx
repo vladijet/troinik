@@ -56,7 +56,6 @@ function TeeSymbol({ sel }) {
       <line x1={-28} y1={0} x2={28} y2={0} stroke={s} strokeWidth={3} strokeLinecap="round" />
       <line x1={0}   y1={0} x2={0}  y2={28} stroke={s} strokeWidth={3} strokeLinecap="round" />
       <circle r={4} fill={s} />
-      <text y={-14} textAnchor="middle" fontSize={8} fill="#475569">ТЕЕ</text>
     </g>
   );
 }
@@ -67,7 +66,6 @@ function ElbowSymbol({ sel }) {
     <g>
       <path d={`M -28,0 L 0,0 L 0,28`} fill="none" stroke={s} strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" />
       <circle r={4} fill={s} />
-      <text x={6} y={-10} fontSize={8} fill="#475569">90°</text>
     </g>
   );
 }
@@ -188,6 +186,40 @@ function GraphNode({ node, sel, res, usedPorts, errorPorts, cappedPorts, inPorts
   );
 }
 
+// ─── BFS-нумерация труб от насоса ────────────────────────────────────────────
+function buildEdgeNumbers(nodes, edges) {
+  const pump = nodes.find(n => n.type === 'pump');
+  if (!pump) return {};
+
+  // строим список смежности: nodeId → [{edgeId, neighborId}]
+  const adj = {};
+  nodes.forEach(n => (adj[n.id] = []));
+  edges.forEach(e => {
+    adj[e.fromNodeId]?.push({ edgeId: e.id, neighborId: e.toNodeId });
+    adj[e.toNodeId]?.push({ edgeId: e.id, neighborId: e.fromNodeId });
+  });
+
+  const edgeNum = {};
+  let counter = 1;
+  const visitedEdges = new Set();
+  const visitedNodes = new Set([pump.id]);
+  const queue = [pump.id];
+
+  while (queue.length > 0) {
+    const nodeId = queue.shift();
+    for (const { edgeId, neighborId } of adj[nodeId] || []) {
+      if (visitedEdges.has(edgeId)) continue;
+      visitedEdges.add(edgeId);
+      edgeNum[edgeId] = counter++;
+      if (!visitedNodes.has(neighborId)) {
+        visitedNodes.add(neighborId);
+        queue.push(neighborId);
+      }
+    }
+  }
+  return edgeNum;
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export default function GraphCanvas({
   nodes, edges, selectedId, results, openPorts, cappedPorts, inPorts,
@@ -200,6 +232,7 @@ export default function GraphCanvas({
   const [dragOver, setDragOver] = useState(false);
 
   const nodeMap = Object.fromEntries(nodes.map(n => [n.id, n]));
+  const edgeNumbers = buildEdgeNumbers(nodes, edges);
 
   const usedPorts = new Set(edges.flatMap(e => [
     `${e.fromNodeId}:${e.fromPortId}`, `${e.toNodeId}:${e.toPortId}`,
@@ -368,15 +401,11 @@ export default function GraphCanvas({
 
               {mid && (
                 <g style={{ pointerEvents: 'none' }} transform={`translate(${mid.x + 12}, ${mid.y - 22})`}>
-                  <rect x={-2} y={-8} width={res ? 110 : 70} height={res ? 36 : 16}
+                  <rect x={-2} y={-8} width={res ? 110 : 80} height={res ? 36 : 16}
                     rx={3} fill="#0f172a" opacity={0.82} />
-                  {/* id + иконка двойной трубы */}
                   <text x={0} y={0} fontSize={7} fontWeight="700" fill={isSel ? '#e2e8f0' : '#64748b'}>
-                    {edge.id}
+                    {`Труба - ${edgeNumbers[edge.id] ?? '?'}`}
                   </text>
-                  <line x1={28} y1={-4} x2={44} y2={-4} stroke={supplyColor} strokeWidth={1.5} />
-                  <line x1={28} y1={-1} x2={44} y2={-1} stroke={returnColor} strokeWidth={1.5} />
-                  {/* Длина или диаметр */}
                   <text x={0} y={10} fontSize={7} fill={isSel ? '#93c5fd' : '#475569'}>
                     {res
                       ? `Ø${res.size?.outer}×${res.size?.wall} · ${res.velocity?.toFixed(2)}м/с`
