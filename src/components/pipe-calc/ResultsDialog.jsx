@@ -97,27 +97,27 @@ const FITTING_NAMES = {
   stainless:     { tee: 'Тройник пресс (раструб) нерж.', elbow: 'Угол 90° пресс (раструб) нерж.' },
 };
 
-// Получить диаметры всех труб, подключённых к узлу
-function getNodeEdgeSizes(nodeId, edges, results) {
+// Получить числовые внешние диаметры труб, подключённых к узлу
+function getNodeEdgeDiameters(nodeId, edges, results) {
   const connected = (edges || []).filter(e => e.fromNodeId === nodeId || e.toNodeId === nodeId);
-  return connected.map(e => {
-    const res = results?.[e.id];
-    return res?.size ? `${res.size.outer}` : null;
-  }).filter(Boolean);
+  return connected.map(e => results?.[e.id]?.size?.outer).filter(Boolean);
 }
 
-// Форматировать размер тройника: вход×выход×ответвление
-function teeSizeLabel(nodeId, edges, results) {
-  const sizes = getNodeEdgeSizes(nodeId, edges, results);
-  if (sizes.length === 3) return `${sizes[0]}×${sizes[1]}×${sizes[2]} мм`;
-  if (sizes.length > 0) return `${sizes[0]} мм`;
-  return '';
+// Нормализованный ключ для тройника:
+// два прохода (наибольших диаметра) × ответвление (наименьший)
+function normalizedTeeKey(diameters) {
+  if (diameters.length < 3) return diameters.sort((a, b) => b - a).join('×') + ' мм';
+  const sorted = [...diameters].sort((a, b) => b - a); // по убыванию
+  // Два прохода — первые два, ответвление — третий
+  return `${sorted[0]}×${sorted[1]}×${sorted[2]} мм`;
 }
 
-function elbowSizeLabel(nodeId, edges, results) {
-  const sizes = getNodeEdgeSizes(nodeId, edges, results);
-  if (sizes.length >= 1) return `${sizes[0]} мм`;
-  return '';
+// Нормализованный ключ для угла: большой × меньший (или один размер если равны)
+function normalizedElbowKey(diameters) {
+  if (diameters.length < 2) return (diameters[0] || '?') + ' мм';
+  const sorted = [...diameters].sort((a, b) => b - a);
+  if (sorted[0] === sorted[1]) return `${sorted[0]} мм`;
+  return `${sorted[0]}×${sorted[1]} мм`;
 }
 
 function buildSpecification(nodes, edges, results, pipeType) {
@@ -126,19 +126,21 @@ function buildSpecification(nodes, edges, results, pipeType) {
   const fittings      = FITTING_NAMES[pipeType] || FITTING_NAMES.ppr_pn20;
   const adapter       = RADIATOR_ADAPTER[pipeType] || RADIATOR_ADAPTER.ppr_pn20;
 
-  // Тройники — группируем по размеру
+  // Тройники — нормализуем диаметры, группируем
   const teeGroups = {};
   (nodes || []).filter(n => n.type === 'tee').forEach(n => {
-    const label = teeSizeLabel(n.id, edges, results);
-    const key = label ? `${fittings.tee} ${label}` : fittings.tee;
+    const diams = getNodeEdgeDiameters(n.id, edges, results);
+    const sizeLabel = normalizedTeeKey(diams);
+    const key = `${fittings.tee} ${sizeLabel}`;
     teeGroups[key] = (teeGroups[key] || 0) + 1;
   });
 
-  // Углы — группируем по размеру
+  // Углы — нормализуем диаметры (от большего к меньшему), группируем
   const elbowGroups = {};
   (nodes || []).filter(n => n.type === 'elbow').forEach(n => {
-    const label = elbowSizeLabel(n.id, edges, results);
-    const key = label ? `${fittings.elbow} ${label}` : fittings.elbow;
+    const diams = getNodeEdgeDiameters(n.id, edges, results);
+    const sizeLabel = normalizedElbowKey(diams);
+    const key = `${fittings.elbow} ${sizeLabel}`;
     elbowGroups[key] = (elbowGroups[key] || 0) + 1;
   });
 
