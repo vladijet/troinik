@@ -90,7 +90,7 @@ function EdgePanel({ edge, res, onUpdateEdge, onDeleteEdge }) {
 }
 
 // Инспектор узла
-function NodePanel({ node, res, onUpdate, onDelete, onRotate }) {
+function NodePanel({ node, res, onUpdate, onDelete, onRotate, deltaT }) {
   const [flowWarn, setFlowWarn] = useState(false);
   const color = NODE_COLORS[node.type] || D.accent;
 
@@ -162,6 +162,11 @@ function NodePanel({ node, res, onUpdate, onDelete, onRotate }) {
             <SInput type="number" value={node.props?.power ?? ''}
               onChange={e => { onUpdate({ power: e.target.value, flowRate: '' }); setFlowWarn(false); }}
               step={100} min={0} placeholder="" />
+            {deltaT != null && (
+              <p style={{ fontSize: 9, color: D.muted, marginTop: 3, lineHeight: 1.4 }}>
+                * Вводите мощность при Δt = <span style={{ color: '#34d399', fontWeight: 700 }}>{deltaT}°C</span>
+              </p>
+            )}
           </Field>
         </>
       )}
@@ -201,7 +206,7 @@ function NodePanel({ node, res, onUpdate, onDelete, onRotate }) {
   );
 }
 
-export default function GraphInspector({ selected, nodes, edges, results, onUpdateNode, onDeleteNode, onRotate, onUpdateEdge, onDeleteEdge }) {
+export default function GraphInspector({ selected, nodes, edges, results, deltaT, onUpdateNode, onDeleteNode, onRotate, onUpdateEdge, onDeleteEdge }) {
   if (!selected) {
     return (
       <div className="p-4 flex flex-col items-center justify-center h-full text-center gap-3">
@@ -227,5 +232,6 @@ export default function GraphInspector({ selected, nodes, edges, results, onUpda
   return <NodePanel node={node} res={results?.[node.id]}
     onUpdate={props => onUpdateNode(node.id, props)}
     onDelete={() => onDeleteNode(node.id)}
-    onRotate={onRotate} />;
+    onRotate={onRotate}
+    deltaT={deltaT} />;
 }

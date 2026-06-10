@@ -42,8 +42,9 @@ export default function PipeCalculator() {
   const [cappedPorts, setCappedPorts] = useState(new Set()); // заглушённые порты "nodeId:portId"
 
   const [globalParams, setGlobalParams] = useState({
-    pipeType: 'ppr_pn20', tSupply: 80, tReturn: 60,
+    pipeType: 'ppr_pn20', tSupply: 75, tReturn: 60, tAir: 20,
   });
+  const deltaT = Math.round((globalParams.tSupply + globalParams.tReturn) / 2 - globalParams.tAir);
 
   // Del → удалить выбранный
   useEffect(() => {
@@ -259,6 +260,17 @@ export default function PipeCalculator() {
             onChange={e => setGlobalParams(p => ({ ...p, tReturn: +e.target.value }))}
             className="h-7 w-14 text-xs"
             style={{ background: '#1e293b', borderColor: '#1e3a5f', color: '#94a3b8' }} />
+
+          <Label className="text-xs shrink-0" style={{ color: '#475569' }}>Воздух °C:</Label>
+          <Input type="number" value={globalParams.tAir}
+            onChange={e => setGlobalParams(p => ({ ...p, tAir: +e.target.value }))}
+            className="h-7 w-14 text-xs"
+            style={{ background: '#1e293b', borderColor: '#1e3a5f', color: '#94a3b8' }} />
+
+          <div className="flex items-center gap-1 px-2 h-7 rounded text-xs font-bold"
+            style={{ background: '#1e293b', border: '1px solid #1e3a5f', color: '#34d399' }}>
+            Δt = {deltaT}°C
+          </div>
         </div>
 
         <div className="ml-auto flex items-center gap-2">
@@ -353,6 +365,7 @@ export default function PipeCalculator() {
             nodes={nodes}
             edges={edges}
             results={results}
+            deltaT={deltaT}
             onUpdateNode={handleUpdateNode}
             onDeleteNode={handleDelete}
             onRotate={handleRotate}
