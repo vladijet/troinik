@@ -131,6 +131,7 @@ export function computeFlowDirections(nodes, edges) {
 // ─── Open ports (для проверки топологии) ─────────────────────────────────────
 // out-порт радиатора НЕ считается ошибкой — радиатор является терминальным узлом
 // Заглушённые порты (cappedPorts) не считаются ошибкой
+// Если у радиатора подключён хотя бы один порт — второй автоматически считается заглушённым
 export function getOpenPorts(nodes, edges, cappedPorts = new Set()) {
   const used = new Set(edges.flatMap(e => [
     `${e.fromNodeId}:${e.fromPortId}`,
@@ -140,16 +141,42 @@ export function getOpenPorts(nodes, edges, cappedPorts = new Set()) {
   nodes.forEach(node => {
     const config = NODE_PORT_CONFIG[node.type];
     if (!config) return;
+
+    // Для радиатора: если хотя бы один порт занят — второй автоматически заглушён
+    const isRadiator = node.type === 'radiator';
+    const radiatorHasAnyConnection = isRadiator && ['in', 'out'].some(p => used.has(`${node.id}:${p}`));
+
     Object.entries(config).forEach(([portId]) => {
       const key = `${node.id}:${portId}`;
       if (used.has(key)) return;
-      if (cappedPorts.has(key)) return; // заглушён
+      if (cappedPorts.has(key)) return;
+      // Если радиатор уже подключён одним портом — второй свободный автоматически заглушён
+      if (isRadiator && radiatorHasAnyConnection) return;
       // out-порт радиатора разрешено оставлять свободным — конец ветки
-      if (node.type === 'radiator' && portId === 'out') return;
+      if (isRadiator && portId === 'out') return;
       open.push({ nodeId: node.id, portId });
     });
   });
   return open;
+}
+
+// Возвращает Set заглушённых портов с учётом автозаглушки радиаторов
+export function getAutoCappedPorts(nodes, edges, manualCappedPorts = new Set()) {
+  const used = new Set(edges.flatMap(e => [
+    `${e.fromNodeId}:${e.fromPortId}`,
+    `${e.toNodeId}:${e.toPortId}`,
+  ]));
+  const result = new Set(manualCappedPorts);
+  nodes.forEach(node => {
+    if (node.type !== 'radiator') return;
+    const hasAny = ['in', 'out'].some(p => used.has(`${node.id}:${p}`));
+    if (!hasAny) return;
+    ['in', 'out'].forEach(portId => {
+      const key = `${node.id}:${portId}`;
+      if (!used.has(key)) result.add(key);
+    });
+  });
+  return result;
 }
 
 // ─── Topology validation ──────────────────────────────────────────────────────

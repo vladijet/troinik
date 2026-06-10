@@ -18,7 +18,7 @@ import ElementPanel   from '@/components/pipe-calc/ElementPanel';
 import {
   createNode, createEdge, resetUid,
   NODE_PORT_CONFIG, NODE_SIZE, getPortAbsPos,
-  validateTopology, computeFlowDirections,
+  validateTopology, computeFlowDirections, getAutoCappedPorts,
 } from '@/lib/hydraulicGraph';
 import { calcHydraulicGraph } from '@/lib/hydraulicCalcEngine';
 import { PIPE_TYPES } from '@/lib/pipeStandards';
@@ -192,7 +192,7 @@ export default function PipeCalculator() {
   const handleCalculate = useCallback(() => {
     try {
       console.log('[Calc] nodes:', nodes.length, 'edges:', edges.length);
-      const val = validateTopology(nodes, edges, cappedPorts);
+      const val = validateTopology(nodes, edges, effectiveCappedPorts);
       console.log('[Calc] validation:', val);
       setValidation(val);
       if (!val.valid) {
@@ -214,6 +214,8 @@ export default function PipeCalculator() {
   const openPorts   = validation ? validation.openPorts : [];
   const hasErrors   = validation && !validation.valid;
   const { inPorts } = computeFlowDirections(nodes, edges);
+  // Объединяем ручные заглушки + автозаглушки подключённых радиаторов
+  const effectiveCappedPorts = getAutoCappedPorts(nodes, edges, cappedPorts);
 
   return (
     <div className="h-screen flex flex-col" style={{ overflow: 'hidden', background: '#0f172a' }}>
@@ -343,12 +345,19 @@ export default function PipeCalculator() {
           onKeyDown={e => { if (e.key === 'Escape') setPendingPort(null); }}
           tabIndex={0}>
           <GraphCanvas
+            onDropElement={(type, x, y) => {
+              const n = createNode(type, x, y);
+              setNodes(prev => [...prev, n]);
+              setSelectedId(n.id);
+              setResults(null);
+              setValidation(null);
+            }}
             nodes={nodes}
             edges={edges}
             selectedId={pendingPort ? pendingPort.nodeId : selectedId}
             results={results}
             openPorts={openPorts}
-            cappedPorts={cappedPorts}
+            cappedPorts={effectiveCappedPorts}
             inPorts={inPorts}
             onNodeMove={handleNodeMove}
             onNodeClick={id => { setPendingPort(null); setSelectedId(id); }}

@@ -188,12 +188,13 @@ function GraphNode({ node, sel, res, usedPorts, errorPorts, cappedPorts, inPorts
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export default function GraphCanvas({
   nodes, edges, selectedId, results, openPorts, cappedPorts, inPorts,
-  onNodeMove, onNodeClick, onPortClick, onRotate, onEdgeClick,
+  onNodeMove, onNodeClick, onPortClick, onRotate, onEdgeClick, onDropElement,
 }) {
   const svgRef = useRef(null);
   const [vp, setVp]   = useState({ x: 160, y: 200, scale: 1 });
   const [drag, setDrag] = useState(null);
   const [pan,  setPan]  = useState(null);
+  const [dragOver, setDragOver] = useState(false);
 
   const nodeMap = Object.fromEntries(nodes.map(n => [n.id, n]));
 
@@ -288,11 +289,32 @@ export default function GraphCanvas({
   const goy = ((vp.y % gs) + gs) % gs;
   const dotR = Math.max(0.5, vp.scale * 0.3);
 
+  const handleDragOver = useCallback((e) => {
+    e.preventDefault();
+    setDragOver(true);
+  }, []);
+
+  const handleDragLeave = useCallback(() => {
+    setDragOver(false);
+  }, []);
+
+  const handleDrop = useCallback((e) => {
+    e.preventDefault();
+    setDragOver(false);
+    const type = e.dataTransfer.getData('elementType');
+    if (!type || !onDropElement) return;
+    const { x: sx, y: sy } = getSVG(e);
+    const cx = snapGrid((sx - vp.x) / vp.scale);
+    const cy = snapGrid((sy - vp.y) / vp.scale);
+    onDropElement(type, cx, cy);
+  }, [vp, onDropElement]);
+
   return (
     <svg ref={svgRef} className="w-full h-full"
-      style={{ cursor: pan ? 'grabbing' : 'default', background: BG }}
+      style={{ cursor: pan ? 'grabbing' : 'default', background: dragOver ? '#0f1f30' : BG }}
       onMouseDown={handleMouseDown} onMouseMove={handleMouseMove}
-      onMouseUp={handleMouseUp} onWheel={handleWheel}>
+      onMouseUp={handleMouseUp} onWheel={handleWheel}
+      onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}>
 
       <defs>
         <pattern id="dotGrid" patternUnits="userSpaceOnUse" x={gox} y={goy} width={gs} height={gs}>

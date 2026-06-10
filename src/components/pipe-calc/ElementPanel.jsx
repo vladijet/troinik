@@ -54,8 +54,15 @@ export default function ElementPanel({ onAddElement }) {
         Труба — автоматически при соединении
       </p>
       {ITEMS.map(item => (
-        <button key={item.type} onClick={() => onAddElement(item.type)} title={item.label}
-          className="w-[64px] flex flex-col items-center gap-0.5 py-2 px-1 rounded transition-all"
+        <button key={item.type}
+          onClick={() => onAddElement(item.type)}
+          title={item.label}
+          draggable
+          onDragStart={e => {
+            e.dataTransfer.setData('elementType', item.type);
+            e.dataTransfer.effectAllowed = 'copy';
+          }}
+          className="w-[64px] flex flex-col items-center gap-0.5 py-2 px-1 rounded transition-all cursor-grab active:cursor-grabbing"
           style={{ background: '#1e293b', border: '1px solid #1e3a5f' }}
           onMouseEnter={e => { e.currentTarget.style.borderColor = '#3b82f6'; e.currentTarget.style.background = '#1e3a5f'; }}
           onMouseLeave={e => { e.currentTarget.style.borderColor = '#1e3a5f'; e.currentTarget.style.background = '#1e293b'; }}
