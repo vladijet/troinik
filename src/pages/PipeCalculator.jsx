@@ -27,9 +27,20 @@ import ResultsDialog from '@/components/pipe-calc/ResultsDialog';
 // Начальное состояние: один насос в центре
 const PUMP_NODE = { id: 'pump-0', type: 'pump', x: 200, y: 300, rotation: 0, props: {} };
 
+const STORAGE_KEY = 'hydro-graph-v1';
+
+function loadSavedGraph() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch { return null; }
+}
+
 export default function PipeCalculator() {
-  const [nodes,      setNodes]      = useState([PUMP_NODE]);
-  const [edges,      setEdges]      = useState([]);
+  const saved = loadSavedGraph();
+  const [nodes,      setNodes]      = useState(saved?.nodes || [PUMP_NODE]);
+  const [edges,      setEdges]      = useState(saved?.edges || []);
   const [selectedId, setSelectedId] = useState(null);
 
   // Режим соединения: первый выбранный порт
@@ -41,9 +52,14 @@ export default function PipeCalculator() {
   const [validation, setValidation] = useState(null);
   const [cappedPorts, setCappedPorts] = useState(new Set()); // заглушённые порты "nodeId:portId"
 
-  const [globalParams, setGlobalParams] = useState({
-    pipeType: 'ppr_pn20', tSupply: 75, tReturn: 60, tAir: 22,
-  });
+  const [globalParams, setGlobalParams] = useState(
+    saved?.globalParams || { pipeType: 'ppr_pn20', tSupply: 75, tReturn: 60, tAir: 22 }
+  );
+
+  // Автосохранение при каждом изменении графа
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ nodes, edges, globalParams }));
+  }, [nodes, edges, globalParams]);
   const deltaT = +((globalParams.tSupply + globalParams.tReturn) / 2 - globalParams.tAir).toFixed(1);
 
   // Del → удалить выбранный
