@@ -1,5 +1,5 @@
 /**
- * Hydraulic Calculation Engine v7.0 — двухтрубная система, одно ребро = магистраль (подача + обратка)
+ * Hydraulic Calculation Engine v8.0 — двухтрубная система, одно ребро = магистраль (подача + обратка)
  *
  * Физическая модель:
  * - Каждое ребро графа = двухтрубная магистраль: подача и обратка идут параллельно.
@@ -8,6 +8,10 @@
  *   (путь = BFS от насоса до радиатора; каждый сегмент несёт потери подачи + обратки)
  * - Насос подбирается по МАКСИМАЛЬНОМУ ΔP среди всех веток (критический путь).
  * - Расход насоса = СУММА расходов всех радиаторов.
+ *
+ * Сопротивление радиатора:
+ * - Радиатор с нижним подключением + встроенный термовентиль = 10 кПа (константа).
+ * - Диапазон нормальной работы термоклапана: 3–30 кПа (бесшумная работа).
  */
 import { PIPE_TYPES } from './pipeStandards';
 import { WATER, ZETA } from './hydraulicGraph';
@@ -15,7 +19,11 @@ import { WATER, ZETA } from './hydraulicGraph';
 const MIN_FLOW_LPM  = 0.65;
 const V_OPT_MIN     = 0.3;
 const V_OPT_MAX     = 0.5;
-const MAX_DP_SYSTEM = 20000; // Па (20 кПа)
+const MAX_DP_SYSTEM = 30000; // Па (30 кПа) — максимум для бесшумной работы термоклапана
+
+// Сопротивление радиатора с нижним подключением + встроенный термовентиль
+// Диапазон: 5–15 кПа, проектный номинал = 10 кПа
+const RADIATOR_VALVE_DP = 10000; // Па
 
 // ─── Подбор диаметра ──────────────────────────────────────────────────────────
 function selectPipeSize(flowLpm, pipeType, forceMinInner = 0) {
@@ -60,11 +68,18 @@ function frictionFactor(re, roughnessMm, innerMm) {
 function pipePressureDrop(flowLpm, lengthM, size, pipeType) {
   if (!size || flowLpm <= 0 || lengthM <= 0) return 0;
   const spec = PIPE_TYPES[pipeType];
-  const d = size.inner / 1000;
-  const v = flowLpm / 60000 / (Math.PI * d * d / 4);
+  const d = size.inner / 1000;           // мм → м
+  const v = flowLpm / 60000 / (Math.PI * d * d / 4); // л/мин → м³/с → м/с
   const re = v * d / WATER.viscosity;
   const f = frictionFactor(re, spec.roughness, size.inner);
-  return f * (lengthM / d) * (WATER.density * v * v / 2);
+  const dp = f * (lengthM / d) * (WATER.density * v * v / 2);
+
+  console.log(
+    `[pipeDp] Ø${size.inner}мм Q=${flowLpm.toFixed(3)}л/мин L=${lengthM}м` +
+    ` v=${v.toFixed(4)}м/с Re=${re.toFixed(0)} λ=${f.toFixed(5)} ΔP=${dp.toFixed(1)}Па`
+  );
+
+  return dp;
 }
 
 function specificPressureDrop(flowLpm, size, pipeType) {
@@ -257,7 +272,11 @@ export function calcHydraulicGraph(nodes, edges, globalParams) {
       const flow = radFlow[n.id] || 0;
       const size = selectPipeSize(flow, pipeType);
       const v = size?.velocity || 0;
-      res[n.id] = { flowRate: flow, size, pressureLoss: localDrop(zeta.radiator, v) };
+      // Радиатор с нижним подключением + встроенный термовентиль:
+      // константное сопротивление 10 кПа + динамические потери арматуры
+      const dpDynamic = localDrop(zeta.radiator, v);
+      const dpTotal   = RADIATOR_VALVE_DP + dpDynamic;
+      res[n.id] = { flowRate: flow, size, pressureLoss: dpTotal, pressureLossDynamic: dpDynamic, pressureLossValve: RADIATOR_VALVE_DP };
     }
 
     return res;
@@ -294,7 +313,7 @@ export function calcHydraulicGraph(nodes, edges, globalParams) {
   // ── 8. Автокоррекция при ΔP > 20 кПа ─────────────────────────────────────
   const warnings = [];
   if (maxDp > MAX_DP_SYSTEM && criticalRadId) {
-    warnings.push(`Сопротивление критической ветки ${(maxDp/1000).toFixed(1)} кПа > 20 кПа. Выполняется автокоррекция.`);
+    warnings.push(`Сопротивление критической ветки ${(maxDp/1000).toFixed(1)} кПа > 30 кПа. Выполняется автокоррекция.`);
 
     const critPath = bfsPath(pump.id, criticalRadId, adjUndirected, null);
     const forceMinInnerByEdge = {};
@@ -319,7 +338,7 @@ export function calcHydraulicGraph(nodes, edges, globalParams) {
         if (dp > maxDp) maxDp = dp;
       }
       if (maxDp > MAX_DP_SYSTEM) {
-        warnings.push(`После коррекции: ${(maxDp/1000).toFixed(1)} кПа. Рекомендуется увеличить диаметры магистрали.`);
+        warnings.push(`После коррекции: ${(maxDp/1000).toFixed(1)} кПа > 30 кПа. Рекомендуется увеличить диаметры магистрали.`);
       } else {
         warnings.push(`После коррекции: ${(maxDp/1000).toFixed(1)} кПа ✓`);
       }
