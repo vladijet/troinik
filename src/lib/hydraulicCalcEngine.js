@@ -183,9 +183,17 @@ export function calcHydraulicGraph(nodes, edges, globalParams) {
   // ── 4. Суммирование расходов через DFS (от насоса вниз) ────────────────────
   const nodeFlow = buildFlowsByDFS(pump.id, adjOut, radFlow, nodes.map(n => n.id));
 
+  console.log('[HydroCalc] adjOut:', JSON.stringify(adjOut));
+  console.log('[HydroCalc] radFlow:', JSON.stringify(radFlow));
+  console.log('[HydroCalc] nodeFlow after DFS:', JSON.stringify(nodeFlow));
+
   // Поток через каждое ребро = поток узла-потребителя (to)
   const edgeFlow = {};
-  edges.forEach(e => (edgeFlow[e.id] = nodeFlow[e.toNodeId] || 0));
+  edges.forEach(e => {
+    const flow = nodeFlow[e.toNodeId] || 0;
+    edgeFlow[e.id] = flow;
+    console.log(`[HydroCalc] edge ${e.id}: from=${e.fromNodeId}(port:${e.fromPortId}) → to=${e.toNodeId}(port:${e.toPortId}), flow=${flow} л/мин`);
+  });
 
   // ── 5. Первый проход: подбор диаметров и потерь ────────────────────────────
   function calcAllResults(forceMinInnerByEdge = {}) {
@@ -197,6 +205,7 @@ export function calcHydraulicGraph(nodes, edges, globalParams) {
       const len  = parseFloat(e.pipeProps.length);
       const minInner = forceMinInnerByEdge[e.id] || 0;
       const size = selectPipeSize(flow, pipeType, minInner);
+      console.log(`[HydroCalc] selectPipeSize edge ${e.id}: flow=${flow} л/мин → size=`, size ? `Ø${size.outer}×${size.wall} (inner=${size.inner}mm), v=${size.velocity?.toFixed(3)}м/с` : 'null');
       const dp   = pipePressureDrop(flow, len, size, pipeType);
       res[e.id] = {
         flowRate: flow,
