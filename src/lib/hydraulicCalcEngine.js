@@ -1,12 +1,11 @@
 /**
- * Hydraulic Calculation Engine v6.0 — двухтрубная система с явным разделением подачи/обратки
+ * Hydraulic Calculation Engine v7.0 — двухтрубная система, одно ребро = магистраль (подача + обратка)
  *
  * Физическая модель:
- * - Каждая труба имеет флаг isReturn: false = магистраль подачи, true = магистраль обратки.
- * - Пользователь явно помечает трубы как «подача» или «обратка».
- * - Для каждого радиатора находим путь по трубам ПОДАЧИ от насоса до радиатора.
- * - Затем находим путь по трубам ОБРАТКИ от радиатора обратно до насоса.
- * - ΔP_ветки = ΔP_подача_путь + ΔP_радиатора + ΔP_обратка_путь
+ * - Каждое ребро графа = двухтрубная магистраль: подача и обратка идут параллельно.
+ * - Пользователь указывает длину ОДНОЙ трубы. Движок считает её × 2.
+ * - ΔP_ветки = ΔP_путь(подача, L×2) + ΔP_радиатора
+ *   (путь = BFS от насоса до радиатора; каждый сегмент несёт потери подачи + обратки)
  * - Насос подбирается по МАКСИМАЛЬНОМУ ΔP среди всех веток (критический путь).
  * - Расход насоса = СУММА расходов всех радиаторов.
  */
@@ -196,38 +195,11 @@ export function calcHydraulicGraph(nodes, edges, globalParams) {
     adjUndirected[e.toNodeId]?.push({ edgeId: e.id, nodeId: e.fromNodeId });
   });
 
-  // ── 4. Разделяем трубы на подачу и обратку ────────────────────────────────
-  // isReturn: true → труба обратки, false/undefined → труба подачи
-  const supplyEdgeIds = new Set(edges.filter(e => !e.pipeProps?.isReturn).map(e => e.id));
-  const returnEdgeIds = new Set(edges.filter(e =>  e.pipeProps?.isReturn).map(e => e.id));
+  // ── 4. Расходы по рёбрам и узлам ──────────────────────────────────────────
+  // Каждое ребро = магистраль (подача + обратка). allowedEdgeIds = null → все рёбра.
+  const edgeFlow = buildEdgeFlows(pump.id, radiators, radFlow, adjUndirected, null);
+  const nodeFlow = buildNodeFlows(pump.id, radiators, radFlow, adjUndirected, null, null);
 
-  // Если пользователь не пометил ни одной обратки — fallback к старому поведению
-  // (все трубы считаются подачей, что соответствует однотрубной схеме)
-  const hasTwoLineModel = returnEdgeIds.size > 0;
-
-  const effectiveSupplyIds = hasTwoLineModel ? supplyEdgeIds : null; // null = все рёбра
-  const effectiveReturnIds = hasTwoLineModel ? returnEdgeIds : null;
-
-  // ── 5. Расходы по рёбрам ──────────────────────────────────────────────────
-  const edgeFlow = buildEdgeFlows(pump.id, radiators, radFlow, adjUndirected, effectiveSupplyIds);
-  const nodeFlow = buildNodeFlows(pump.id, radiators, radFlow, adjUndirected, effectiveSupplyIds, effectiveReturnIds);
-
-  // Для рёбер обратки — расход совпадает с расходом рёбер подачи у того же радиатора.
-  // Заполняем edgeFlow для обраток: ищем расход через путь обратки.
-  if (hasTwoLineModel) {
-    const returnEdgeFlow = buildEdgeFlows(radiators[0]?.id, radiators, radFlow, adjUndirected, effectiveReturnIds);
-    // Строим edgeFlow обратки для каждого радиатора
-    for (const rad of radiators) {
-      const returnPath = bfsPath(rad.id, pump.id, adjUndirected, effectiveReturnIds);
-      if (!returnPath) continue;
-      const q = radFlow[rad.id] || 0;
-      for (const seg of returnPath) {
-        edgeFlow[seg.edgeId] = (edgeFlow[seg.edgeId] || 0) + q;
-      }
-    }
-  }
-
-  // Заполняем оставшиеся рёбра минимальным расходом
   edges.forEach(e => {
     if (!edgeFlow[e.id]) {
       const flowA = nodeFlow[e.fromNodeId] || 0;
@@ -236,27 +208,28 @@ export function calcHydraulicGraph(nodes, edges, globalParams) {
     }
   });
 
-  console.log('[HydroCalc v6] hasTwoLineModel:', hasTwoLineModel);
-  console.log('[HydroCalc v6] edgeFlow:', JSON.stringify(edgeFlow));
-  console.log('[HydroCalc v6] nodeFlow:', JSON.stringify(nodeFlow));
+  console.log('[HydroCalc v7] edgeFlow:', JSON.stringify(edgeFlow));
+  console.log('[HydroCalc v7] nodeFlow:', JSON.stringify(nodeFlow));
 
-  // ── 6. Расчёт диаметров и потерь ──────────────────────────────────────────
+  // ── 5. Расчёт диаметров и потерь ──────────────────────────────────────────
+  // КЛЮЧЕВОЕ ИЗМЕНЕНИЕ: длина ребра × 2, т.к. каждое ребро = подача + обратка.
   function calcAllResults(forceMinInnerByEdge = {}) {
     const res = {};
 
     for (const e of edges) {
-      const flow = edgeFlow[e.id] || MIN_FLOW_LPM;
-      const len  = parseFloat(e.pipeProps.length);
+      const flow    = edgeFlow[e.id] || MIN_FLOW_LPM;
+      const lenOne  = parseFloat(e.pipeProps.length);
+      const lenDual = lenOne * 2; // подача + обратка
       const minInner = forceMinInnerByEdge[e.id] || 0;
       const size = selectPipeSize(flow, pipeType, minInner);
-      const dp   = pipePressureDrop(flow, len, size, pipeType);
+      const dp   = pipePressureDrop(flow, lenDual, size, pipeType);
       res[e.id] = {
         flowRate: flow,
         size,
         velocity: size?.velocity || 0,
-        pressureLoss: dp,
+        pressureLoss: dp,           // суммарная потеря (подача + обратка)
+        pressureLossOne: pipePressureDrop(flow, lenOne, size, pipeType),
         specificDp: specificPressureDrop(flow, size, pipeType),
-        isReturn: !!e.pipeProps?.isReturn,
       };
     }
 
@@ -290,54 +263,23 @@ export function calcHydraulicGraph(nodes, edges, globalParams) {
     return res;
   }
 
-  // ── 7. Первый расчёт ───────────────────────────────────────────────────────
+  // ── 6. Первый расчёт ───────────────────────────────────────────────────────
   let elementResults = calcAllResults();
 
-  // ── 8. Критический путь ───────────────────────────────────────────────────
-  // В двухтрубной модели: ΔP_ветки = ΔP_подача + ΔP_радиатора + ΔP_обратка
+  // ── 7. Критический путь ────────────────────────────────────────────────────
+  // ΔP_ветки = сумма потерь рёбер (уже × 2) + фитингов + радиатора
   function calcBranchDp(radId) {
+    const path = bfsPath(pump.id, radId, adjUndirected, null);
+    if (!path) return 0;
     let dp = 0;
-
-    if (hasTwoLineModel) {
-      // Путь подачи: насос → радиатор, только по трубам подачи
-      const supplyPath = bfsPath(pump.id, radId, adjUndirected, effectiveSupplyIds);
-      if (supplyPath) {
-        for (const seg of supplyPath) {
-          dp += elementResults[seg.edgeId]?.pressureLoss || 0;
-          const nd = nodes.find(n => n.id === seg.toNodeId);
-          if (nd && nd.type !== 'pump' && nd.type !== 'radiator') {
-            dp += elementResults[nd.id]?.pressureLoss || 0;
-          }
-        }
+    for (const seg of path) {
+      dp += elementResults[seg.edgeId]?.pressureLoss || 0;
+      const nd = nodes.find(n => n.id === seg.toNodeId);
+      if (nd && nd.type !== 'pump' && nd.type !== 'radiator') {
+        dp += elementResults[nd.id]?.pressureLoss || 0;
       }
-      // Потери самого радиатора
-      dp += elementResults[radId]?.pressureLoss || 0;
-      // Путь обратки: радиатор → насос, только по трубам обратки
-      const returnPath = bfsPath(radId, pump.id, adjUndirected, effectiveReturnIds);
-      if (returnPath) {
-        for (const seg of returnPath) {
-          dp += elementResults[seg.edgeId]?.pressureLoss || 0;
-          const nd = nodes.find(n => n.id === seg.toNodeId);
-          if (nd && nd.type !== 'pump' && nd.type !== 'radiator') {
-            dp += elementResults[nd.id]?.pressureLoss || 0;
-          }
-        }
-      }
-    } else {
-      // Fallback: однотрубная — только путь подачи
-      const path = bfsPath(pump.id, radId, adjUndirected, null);
-      if (path) {
-        for (const seg of path) {
-          dp += elementResults[seg.edgeId]?.pressureLoss || 0;
-          const nd = nodes.find(n => n.id === seg.toNodeId);
-          if (nd && nd.type !== 'pump' && nd.type !== 'radiator') {
-            dp += elementResults[nd.id]?.pressureLoss || 0;
-          }
-        }
-      }
-      dp += elementResults[radId]?.pressureLoss || 0;
     }
-
+    dp += elementResults[radId]?.pressureLoss || 0;
     return dp;
   }
 
@@ -345,23 +287,21 @@ export function calcHydraulicGraph(nodes, edges, globalParams) {
   let criticalRadId = null;
   for (const rad of radiators) {
     const dp = calcBranchDp(rad.id);
-    console.log(`[HydroCalc v6] branch ΔP для ${rad.id}: ${(dp/1000).toFixed(2)} кПа`);
+    console.log(`[HydroCalc v7] branch ΔP для ${rad.id}: ${(dp/1000).toFixed(2)} кПа`);
     if (dp > maxDp) { maxDp = dp; criticalRadId = rad.id; }
   }
 
-  // ── 9. Автокоррекция при ΔP > 20 кПа ─────────────────────────────────────
+  // ── 8. Автокоррекция при ΔP > 20 кПа ─────────────────────────────────────
   const warnings = [];
   if (maxDp > MAX_DP_SYSTEM && criticalRadId) {
     warnings.push(`Сопротивление критической ветки ${(maxDp/1000).toFixed(1)} кПа > 20 кПа. Выполняется автокоррекция.`);
 
-    const critSupplyPath = bfsPath(pump.id, criticalRadId, adjUndirected, effectiveSupplyIds);
-    const critReturnPath = hasTwoLineModel ? bfsPath(criticalRadId, pump.id, adjUndirected, effectiveReturnIds) : null;
+    const critPath = bfsPath(pump.id, criticalRadId, adjUndirected, null);
     const forceMinInnerByEdge = {};
     const spec = PIPE_TYPES[pipeType];
 
-    for (const path of [critSupplyPath, critReturnPath]) {
-      if (!path) continue;
-      for (const seg of path) {
+    if (critPath) {
+      for (const seg of critPath) {
         const currentSize = elementResults[seg.edgeId]?.size;
         if (!currentSize) continue;
         const idx = spec.sizes.findIndex(s => s.inner === currentSize.inner);
@@ -386,11 +326,7 @@ export function calcHydraulicGraph(nodes, edges, globalParams) {
     }
   }
 
-  if (!hasTwoLineModel) {
-    warnings.push('Трубы обратки не помечены. Расчёт ведётся как для однотрубной схемы. Пометьте трубы обратки в инспекторе.');
-  }
-
-  // ── 10. Насос ──────────────────────────────────────────────────────────────
+  // ── 9. Насос ───────────────────────────────────────────────────────────────
   const pumpFlow = Object.values(radFlow).reduce((a, b) => a + b, 0);
   const pumpHead = maxDp / (WATER.density * 9.81);
   elementResults[pump.id] = { flowRate: pumpFlow, pressure: maxDp, head: pumpHead };
@@ -403,6 +339,5 @@ export function calcHydraulicGraph(nodes, edges, globalParams) {
     warnings,
     systemDp: maxDp,
     systemDpOk: maxDp <= MAX_DP_SYSTEM,
-    hasTwoLineModel,
   };
 }

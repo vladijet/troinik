@@ -332,7 +332,7 @@ export default function GraphCanvas({
       <rect width="100%" height="100%" fill="url(#dotGrid)" />
 
       <g transform={`translate(${vp.x},${vp.y}) scale(${vp.scale})`}>
-        {/* Рёбра (трубы) */}
+        {/* Рёбра (двухтрубные магистрали) */}
         {edges.map(edge => {
           const from = nodeMap[edge.fromNodeId];
           const to   = nodeMap[edge.toNodeId];
@@ -341,38 +341,47 @@ export default function GraphCanvas({
           const mid = pathMidpoint(from, edge.fromPortId, to, edge.toPortId);
           const res = results?.[edge.id];
           const isSel = selectedId === edge.id;
-          const isReturn = !!edge.pipeProps?.isReturn;
-          const pipeColor = isReturn
-            ? (isSel ? '#fca5a5' : '#ef4444')
-            : (isSel ? '#60a5fa' : '#3b82f6');
-          const arrId = isReturn ? 'arr-ret' : 'arr';
+          const supplyColor = isSel ? '#60a5fa' : '#3b82f6';
+          const returnColor = isSel ? '#fca5a5' : '#ef4444';
+
           return (
             <g key={edge.id} onClick={e => { e.stopPropagation(); onEdgeClick(edge.id); }}
               style={{ cursor: 'pointer' }}>
               {/* hit zone */}
-              <path d={d} stroke="transparent" strokeWidth={16} fill="none" />
-              <path d={d} stroke="#000" strokeWidth={5} fill="none" strokeLinecap="round" opacity={0.2} />
-              <path d={d} stroke={pipeColor} strokeWidth={isSel ? 3 : 2}
-                fill="none" strokeLinecap="round" markerEnd={`url(#${arrId})`} />
+              <path d={d} stroke="transparent" strokeWidth={20} fill="none" />
+              {/* Тень */}
+              <path d={d} stroke="#000" strokeWidth={7} fill="none" strokeLinecap="round" opacity={0.2} />
+              {/* Обратка (красная) — смещена чуть вниз/вправо */}
+              <path d={d} stroke={returnColor} strokeWidth={isSel ? 2.5 : 1.8}
+                fill="none" strokeLinecap="round" strokeDasharray="6 3"
+                style={{ transform: 'translate(2px, 2px)' }}
+                markerEnd="url(#arr-ret)" />
+              {/* Подача (синяя) — поверх */}
+              <path d={d} stroke={supplyColor} strokeWidth={isSel ? 2.5 : 1.8}
+                fill="none" strokeLinecap="round"
+                markerEnd="url(#arr)" />
+              {/* Выделение */}
+              {isSel && <path d={d} stroke="#ffffff" strokeWidth={5} fill="none" strokeLinecap="round" opacity={0.08} />}
+
               {mid && (
-                <g style={{ pointerEvents: 'none' }} transform={`translate(${mid.x + 10}, ${mid.y - 20})`}>
-                  {/* Фон-подложка */}
-                  <rect x={-2} y={-8} width={res ? 102 : 60} height={res ? 32 : 12}
-                    rx={3} fill="#0f172a" opacity={0.75} />
-                  {/* Название трубы + тип */}
-                  <text x={0} y={0} fontSize={7} fill={pipeColor} fontWeight="600">
-                    {edge.id} {isReturn ? '◀' : '▶'}
+                <g style={{ pointerEvents: 'none' }} transform={`translate(${mid.x + 12}, ${mid.y - 22})`}>
+                  <rect x={-2} y={-8} width={res ? 110 : 70} height={res ? 36 : 16}
+                    rx={3} fill="#0f172a" opacity={0.82} />
+                  {/* id + иконка двойной трубы */}
+                  <text x={0} y={0} fontSize={7} fontWeight="700" fill={isSel ? '#e2e8f0' : '#64748b'}>
+                    {edge.id}
                   </text>
-                  {/* Диаметр + скорость или длина */}
-                  <text x={0} y={10} fontSize={7} fill={isSel ? '#93c5fd' : '#64748b'}>
+                  <line x1={28} y1={-4} x2={44} y2={-4} stroke={supplyColor} strokeWidth={1.5} />
+                  <line x1={28} y1={-1} x2={44} y2={-1} stroke={returnColor} strokeWidth={1.5} strokeDasharray="3 2" />
+                  {/* Длина или диаметр */}
+                  <text x={0} y={10} fontSize={7} fill={isSel ? '#93c5fd' : '#475569'}>
                     {res
                       ? `Ø${res.size?.outer}×${res.size?.wall} · ${res.velocity?.toFixed(2)}м/с`
-                      : `L=${edge.pipeProps?.length || '?'}м`}
+                      : `L=${edge.pipeProps?.length || '?'}м (×2)`}
                   </text>
-                  {/* Расход */}
                   {res && (
                     <text x={0} y={20} fontSize={7} fill="#34d399">
-                      Q={res.flowRate?.toFixed(2)} л/мин
+                      Q={res.flowRate?.toFixed(2)} л/мин · ΔP={res.pressureLoss?.toFixed(0)} Па
                     </text>
                   )}
                 </g>
