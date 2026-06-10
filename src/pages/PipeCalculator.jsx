@@ -42,9 +42,9 @@ export default function PipeCalculator() {
   const [cappedPorts, setCappedPorts] = useState(new Set()); // заглушённые порты "nodeId:portId"
 
   const [globalParams, setGlobalParams] = useState({
-    pipeType: 'ppr_pn20', tSupply: 75, tReturn: 60, tAir: 20,
+    pipeType: 'ppr_pn20', tSupply: 75, tReturn: 60, tAir: 22,
   });
-  const deltaT = Math.round((globalParams.tSupply + globalParams.tReturn) / 2 - globalParams.tAir);
+  const deltaT = +((globalParams.tSupply + globalParams.tReturn) / 2 - globalParams.tAir).toFixed(1);
 
   // Del → удалить выбранный
   useEffect(() => {
