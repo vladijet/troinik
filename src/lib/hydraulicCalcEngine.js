@@ -171,16 +171,32 @@ export function calcHydraulicGraph(nodes, edges, globalParams) {
     if (!l || l <= 0) return { error: `Труба ${e.id}: укажите длину` };
   }
 
-  // ── 3. Направленный граф ───────────────────────────────────────────────────
-  const adjOut = {};
-  const adjIn  = {};
-  nodes.forEach(n => { adjOut[n.id] = []; adjIn[n.id] = []; });
+  // ── 3. Ненаправленный граф (не зависит от порядка кликов пользователя) ──────
+  const adjUndirected = {};
+  nodes.forEach(n => { adjUndirected[n.id] = []; });
   edges.forEach(e => {
-    adjOut[e.fromNodeId]?.push({ edgeId: e.id, nodeId: e.toNodeId });
-    adjIn[e.toNodeId]?.push({ edgeId: e.id, nodeId: e.fromNodeId });
+    adjUndirected[e.fromNodeId]?.push({ edgeId: e.id, nodeId: e.toNodeId });
+    adjUndirected[e.toNodeId]?.push({ edgeId: e.id, nodeId: e.fromNodeId });
   });
 
-  // ── 4. Суммирование расходов через DFS (от насоса вниз) ────────────────────
+  // ── 4. BFS от насоса: определяем направление потока автоматически ──────────
+  // Строим правильный adjOut независимо от того, как пользователь соединял порты
+  const adjOut = {};
+  nodes.forEach(n => { adjOut[n.id] = []; });
+
+  const bfsVisited = new Set([pump.id]);
+  const bfsQueue = [pump.id];
+  while (bfsQueue.length > 0) {
+    const cur = bfsQueue.shift();
+    for (const lnk of adjUndirected[cur] || []) {
+      if (!bfsVisited.has(lnk.nodeId)) {
+        bfsVisited.add(lnk.nodeId);
+        adjOut[cur].push({ edgeId: lnk.edgeId, nodeId: lnk.nodeId });
+        bfsQueue.push(lnk.nodeId);
+      }
+    }
+  }
+
   const nodeFlow = buildFlowsByDFS(pump.id, adjOut, radFlow, nodes.map(n => n.id));
 
   console.log('[HydroCalc] adjOut:', JSON.stringify(adjOut));
