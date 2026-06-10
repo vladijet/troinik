@@ -203,8 +203,10 @@ export default function PipeCalculator() {
       console.log('[Calc] result:', res);
       if (res.error) { toast.error(res.error); return; }
       setResults(res.elementResults);
-      setPumpSummary({ pumpHead: res.pumpHead, pumpFlow: res.pumpFlow });
-      toast.success(`Насос: H=${res.pumpHead.toFixed(2)} м,  Q=${res.pumpFlow.toFixed(1)} л/мин`);
+      setPumpSummary({ pumpHead: res.pumpHead, pumpFlow: res.pumpFlow, systemDp: res.systemDp, systemDpOk: res.systemDpOk });
+      // Показываем предупреждения автокоррекции
+      (res.warnings || []).forEach(w => toast.warning(w, { duration: 6000 }));
+      toast.success(`Насос: H=${res.pumpHead.toFixed(2)} м,  Q=${res.pumpFlow.toFixed(1)} л/мин  |  ΔP=${(res.systemDp/1000).toFixed(1)} кПа`);
     } catch (err) {
       console.error('[Calc] exception:', err);
       toast.error(`Ошибка расчёта: ${err.message}`);
@@ -281,11 +283,24 @@ export default function PipeCalculator() {
             <RotateCcw className="w-3.5 h-3.5" /> Сбросить
           </Button>
           {results && (
-            <Button variant="outline" size="sm" onClick={() => setShowResults(true)}
-              className="gap-1.5 text-xs h-8"
-              style={{ borderColor: '#1e3a5f', color: '#34d399', background: '#0a1929' }}>
-              <BarChart2 className="w-3.5 h-3.5" /> Результат расчёта
-            </Button>
+            <>
+              {pumpSummary?.systemDp != null && (
+                <div className="flex items-center gap-1 px-2 h-7 rounded text-xs font-bold"
+                  style={{
+                    background: '#1e293b',
+                    border: `1px solid ${pumpSummary.systemDpOk ? '#14532d' : '#7f1d1d'}`,
+                    color: pumpSummary.systemDpOk ? '#34d399' : '#f87171',
+                  }}>
+                  ΔP = {(pumpSummary.systemDp / 1000).toFixed(1)} кПа
+                  {pumpSummary.systemDpOk ? ' ✓' : ' ⚠'}
+                </div>
+              )}
+              <Button variant="outline" size="sm" onClick={() => setShowResults(true)}
+                className="gap-1.5 text-xs h-8"
+                style={{ borderColor: '#1e3a5f', color: '#34d399', background: '#0a1929' }}>
+                <BarChart2 className="w-3.5 h-3.5" /> Результат расчёта
+              </Button>
+            </>
           )}
           <Button onClick={handleCalculate} size="sm" className="gap-1.5 text-xs h-8">
             <Play className="w-3.5 h-3.5" /> Рассчитать
