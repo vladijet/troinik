@@ -79,27 +79,79 @@ function ElementResultRow({ id, res, nodes, edges }) {
   );
 }
 
-function buildSpecification(nodes, edges) {
-  const radiatorCount = (nodes || []).filter(n => n.type === 'radiator').length;
-  const teeCount      = (nodes || []).filter(n => n.type === 'tee').length;
-  const elbowCount    = (nodes || []).filter(n => n.type === 'elbow').length;
-  const hasPump       = (nodes || []).some(n => n.type === 'pump');
+// Справочник: материал трубы → описание фитинга-адаптера для подключения к радиатору (Евроконус 3/4")
+const RADIATOR_ADAPTER = {
+  ppr_pn20:      { name: 'Муфта комбинированная ПП/Латунь (пайка → Евроконус 3/4")', short: 'Муфта "Американка" ПП/Евроконус 3/4"' },
+  ppr_pn25:      { name: 'Муфта комбинированная ПП/Латунь (пайка → Евроконус 3/4")', short: 'Муфта "Американка" ПП/Евроконус 3/4"' },
+  pex:           { name: 'Обжимной евроконус PEX (штуцер + обжимное кольцо + гайка 3/4")', short: 'Евроконус обжимной PEX, 3/4"' },
+  metal_plastic: { name: 'Евроконус с диэлектрической прокладкой МП (штуцер + изолятор + кольцо + гайка 3/4")', short: 'Евроконус с диэл. прокладкой МП, 3/4"' },
+  stainless:     { name: 'Фитинг-адаптер нержавеющая сталь (обжимная гайка + фиксирующее кольцо + EPDM → Евроконус 3/4")', short: 'Обжимной адаптер нерж./Евроконус 3/4"' },
+};
 
-  // Группируем трубы по типоразмеру (outer×wall)
-  const pipeGroups = {};
-  (edges || []).forEach(e => {
-    const res_size = null; // размер берётся из results, передаём снаружи
-    const lenOne = parseFloat(e.pipeProps?.length) || 0;
-    pipeGroups['total'] = (pipeGroups['total'] || 0) + lenOne * 2;
+// Справочник: материал трубы → тип тройника и угла
+const FITTING_NAMES = {
+  ppr_pn20:      { tee: 'Тройник ПП (под пайку)', elbow: 'Угол 90° ПП (под пайку)' },
+  ppr_pn25:      { tee: 'Тройник ПП PN25 (под пайку)', elbow: 'Угол 90° ПП PN25 (под пайку)' },
+  pex:           { tee: 'Тройник аксиальный PEX', elbow: 'Угол 90° аксиальный PEX' },
+  metal_plastic: { tee: 'Тройник пресс-фитинг МП', elbow: 'Угол 90° пресс-фитинг МП' },
+  stainless:     { tee: 'Тройник пресс (раструб) нерж.', elbow: 'Угол 90° пресс (раструб) нерж.' },
+};
+
+// Получить диаметры всех труб, подключённых к узлу
+function getNodeEdgeSizes(nodeId, edges, results) {
+  const connected = (edges || []).filter(e => e.fromNodeId === nodeId || e.toNodeId === nodeId);
+  return connected.map(e => {
+    const res = results?.[e.id];
+    return res?.size ? `${res.size.outer}` : null;
+  }).filter(Boolean);
+}
+
+// Форматировать размер тройника: вход×выход×ответвление
+function teeSizeLabel(nodeId, edges, results) {
+  const sizes = getNodeEdgeSizes(nodeId, edges, results);
+  if (sizes.length === 3) return `${sizes[0]}×${sizes[1]}×${sizes[2]} мм`;
+  if (sizes.length > 0) return `${sizes[0]} мм`;
+  return '';
+}
+
+function elbowSizeLabel(nodeId, edges, results) {
+  const sizes = getNodeEdgeSizes(nodeId, edges, results);
+  if (sizes.length >= 1) return `${sizes[0]} мм`;
+  return '';
+}
+
+function buildSpecification(nodes, edges, results, pipeType) {
+  const radiatorCount = (nodes || []).filter(n => n.type === 'radiator').length;
+  const hasPump       = (nodes || []).some(n => n.type === 'pump');
+  const fittings      = FITTING_NAMES[pipeType] || FITTING_NAMES.ppr_pn20;
+  const adapter       = RADIATOR_ADAPTER[pipeType] || RADIATOR_ADAPTER.ppr_pn20;
+
+  // Тройники — группируем по размеру
+  const teeGroups = {};
+  (nodes || []).filter(n => n.type === 'tee').forEach(n => {
+    const label = teeSizeLabel(n.id, edges, results);
+    const key = label ? `${fittings.tee} ${label}` : fittings.tee;
+    teeGroups[key] = (teeGroups[key] || 0) + 1;
   });
 
-  return [
-    { name: 'Циркуляционный насос',          qty: hasPump ? 1 : 0,           unit: 'шт' },
-    { name: 'Узел нижнего подключения (H-блок)', qty: radiatorCount,          unit: 'компл.' },
-    { name: 'Соединение трубы (фитинг)',       qty: radiatorCount * 2,        unit: 'шт' },
-    { name: 'Тройник',                         qty: teeCount,                 unit: 'шт' },
-    { name: 'Угол 90°',                        qty: elbowCount,               unit: 'шт' },
-  ];
+  // Углы — группируем по размеру
+  const elbowGroups = {};
+  (nodes || []).filter(n => n.type === 'elbow').forEach(n => {
+    const label = elbowSizeLabel(n.id, edges, results);
+    const key = label ? `${fittings.elbow} ${label}` : fittings.elbow;
+    elbowGroups[key] = (elbowGroups[key] || 0) + 1;
+  });
+
+  const items = [];
+  if (hasPump) items.push({ name: 'Циркуляционный насос', qty: 1, unit: 'шт' });
+  if (radiatorCount > 0) {
+    items.push({ name: 'Узел нижнего подключения 3/4" (Евроконус, Бинокль/Мультифлекс)', qty: radiatorCount, unit: 'компл.' });
+    items.push({ name: adapter.short, qty: radiatorCount * 2, unit: 'шт' });
+  }
+  Object.entries(teeGroups).forEach(([name, qty]) => items.push({ name, qty, unit: 'шт' }));
+  Object.entries(elbowGroups).forEach(([name, qty]) => items.push({ name, qty, unit: 'шт' }));
+
+  return items;
 }
 
 function buildPipeSpec(edges, results) {
@@ -122,7 +174,7 @@ export default function ResultsDialog({ open, onClose, results, pumpHead, pumpFl
   const H = pumpHead ?? pumpRes?.head ?? 0;
   const Q = pumpFlow ?? pumpRes?.flowRate ?? 0;
   const recommended = selectPump(H, Q);
-  const specification = buildSpecification(nodes, edges);
+  const specification = buildSpecification(nodes, edges, results, globalParams?.pipeType);
   const pipeSpec = buildPipeSpec(edges, results);
 
   const handleDownloadPDF = () => {
@@ -227,13 +279,15 @@ export default function ResultsDialog({ open, onClose, results, pumpHead, pumpFl
     specification.forEach(item => {
       if (item.qty <= 0) return;
       if (y > 270) { doc.addPage(); y = 20; }
+      // Длинные названия переносим
+      const nameLines = doc.splitTextToSize(item.name, 130);
       doc.setTextColor(71, 85, 105);
-      doc.text(item.name, 22, y);
+      doc.text(nameLines, 22, y);
       doc.setTextColor(30, 41, 59);
       doc.setFont(undefined, 'bold');
       doc.text(`${item.qty} ${item.unit}`, W - 22, y, { align: 'right' });
       doc.setFont(undefined, 'normal');
-      y += 6;
+      y += 6 * nameLines.length;
     });
     y += 4;
 
