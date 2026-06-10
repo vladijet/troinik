@@ -347,12 +347,27 @@ export default function GraphCanvas({
               <path d={d} stroke={isSel ? '#60a5fa' : '#3b82f6'} strokeWidth={isSel ? 3 : 2}
                 fill="none" strokeLinecap="round" markerEnd="url(#arr)" />
               {mid && (
-                <text x={mid.x} y={mid.y - 6} textAnchor="middle" fontSize={8}
-                  fill={isSel ? '#93c5fd' : '#475569'}>
-                  {res
-                    ? `Ø${res.size?.outer}×${res.size?.wall} · ${res.velocity?.toFixed(2)}м/с`
-                    : `L=${edge.pipeProps?.length || '?'}м`}
-                </text>
+                <g style={{ pointerEvents: 'none' }}>
+                  {/* Название трубы — всегда */}
+                  <text x={mid.x} y={mid.y - 16} textAnchor="middle" fontSize={7}
+                    fill={isSel ? '#60a5fa' : '#334155'} fontWeight="600">
+                    {edge.id}
+                  </text>
+                  {/* Диаметр + скорость или длина */}
+                  <text x={mid.x} y={mid.y - 6} textAnchor="middle" fontSize={8}
+                    fill={isSel ? '#93c5fd' : '#475569'}>
+                    {res
+                      ? `Ø${res.size?.outer}×${res.size?.wall} · ${res.velocity?.toFixed(2)}м/с`
+                      : `L=${edge.pipeProps?.length || '?'}м`}
+                  </text>
+                  {/* Расход — только если есть результаты */}
+                  {res && (
+                    <text x={mid.x} y={mid.y + 5} textAnchor="middle" fontSize={7}
+                      fill="#34d399">
+                      Q={res.flowRate?.toFixed(2)} л/мин
+                    </text>
+                  )}
+                </g>
               )}
             </g>
           );
