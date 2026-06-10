@@ -132,11 +132,14 @@ export function validateTopology(nodes, edges) {
   const radiators = nodes.filter(n => n.type === 'radiator');
   if (radiators.length === 0) { errors.push('Добавьте хотя бы один радиатор.'); }
 
-  // 4. BFS: концевые узлы должны быть радиаторами
+  // 4. BFS: все радиаторы должны быть достижимы от насоса
   if (openPorts.length === 0 && radiators.length > 0) {
     const adjOut = {};
     nodes.forEach(n => (adjOut[n.id] = []));
-    edges.forEach(e => { adjOut[e.fromNodeId]?.push(e.toNodeId); });
+    edges.forEach(e => {
+      adjOut[e.fromNodeId]?.push(e.toNodeId);
+      adjOut[e.toNodeId]?.push(e.fromNodeId); // проходим в обе стороны
+    });
 
     const visited = new Set();
     const queue = [pump.id];
@@ -144,13 +147,12 @@ export function validateTopology(nodes, edges) {
       const id = queue.shift();
       if (visited.has(id)) continue;
       visited.add(id);
-      const node = nodeMap[id];
-      const outs = adjOut[id] || [];
-      // Узел без исходящих рёбер — концевой, должен быть радиатором
-      if (outs.length === 0 && node?.type !== 'radiator') {
-        errors.push(`Ветка заканчивается не радиатором (${id}).`);
-      }
-      outs.forEach(nid => !visited.has(nid) && queue.push(nid));
+      (adjOut[id] || []).forEach(nid => !visited.has(nid) && queue.push(nid));
+    }
+
+    const unreachable = radiators.filter(r => !visited.has(r.id));
+    if (unreachable.length > 0) {
+      errors.push(`Радиаторы не связаны с насосом: ${unreachable.length} шт.`);
     }
   }
 

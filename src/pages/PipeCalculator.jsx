@@ -80,8 +80,9 @@ export default function PipeCalculator() {
       return;
     }
 
-    // Не соединять с собой
-    if (pendingPort.nodeId === nodeId && pendingPort.portId === portId) {
+    // Не соединять порты одного и того же элемента
+    if (pendingPort.nodeId === nodeId) {
+      toast.error('Нельзя соединять порты одного элемента');
       setPendingPort(null);
       return;
     }
