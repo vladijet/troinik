@@ -5,7 +5,7 @@
  */
 import { useState, useCallback, useEffect } from 'react';
 import { toast } from 'sonner';
-import { Play, Download, Flame, RotateCcw, AlertCircle } from 'lucide-react';
+import { Play, BarChart2, Flame, RotateCcw, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -22,6 +22,7 @@ import {
 } from '@/lib/hydraulicGraph';
 import { calcHydraulicGraph } from '@/lib/hydraulicCalcEngine';
 import { PIPE_TYPES } from '@/lib/pipeStandards';
+import ResultsDialog from '@/components/pipe-calc/ResultsDialog';
 
 // Начальное состояние: один насос в центре
 const PUMP_NODE = { id: 'pump-0', type: 'pump', x: 200, y: 300, rotation: 0, props: {} };
@@ -35,6 +36,8 @@ export default function PipeCalculator() {
   const [pendingPort, setPendingPort] = useState(null);
 
   const [results,    setResults]    = useState(null);
+  const [pumpSummary, setPumpSummary] = useState(null); // { pumpHead, pumpFlow }
+  const [showResults, setShowResults] = useState(false);
   const [validation, setValidation] = useState(null); // { valid, errors, openPorts }
 
   const [globalParams, setGlobalParams] = useState({
@@ -180,6 +183,7 @@ export default function PipeCalculator() {
       console.log('[Calc] result:', res);
       if (res.error) { toast.error(res.error); return; }
       setResults(res.elementResults);
+      setPumpSummary({ pumpHead: res.pumpHead, pumpFlow: res.pumpFlow });
       toast.success(`Насос: H=${res.pumpHead.toFixed(2)} м,  Q=${res.pumpFlow.toFixed(1)} л/мин`);
     } catch (err) {
       console.error('[Calc] exception:', err);
@@ -242,6 +246,13 @@ export default function PipeCalculator() {
             className="gap-1 text-xs h-8" style={{ color: '#64748b' }}>
             <RotateCcw className="w-3.5 h-3.5" /> Сбросить
           </Button>
+          {results && (
+            <Button variant="outline" size="sm" onClick={() => setShowResults(true)}
+              className="gap-1.5 text-xs h-8"
+              style={{ borderColor: '#1e3a5f', color: '#34d399', background: '#0a1929' }}>
+              <BarChart2 className="w-3.5 h-3.5" /> Результат расчёта
+            </Button>
+          )}
           <Button onClick={handleCalculate} size="sm" className="gap-1.5 text-xs h-8">
             <Play className="w-3.5 h-3.5" /> Рассчитать
           </Button>
@@ -281,6 +292,17 @@ export default function PipeCalculator() {
           </span>
         </div>
       )}
+
+      <ResultsDialog
+        open={showResults}
+        onClose={() => setShowResults(false)}
+        results={results}
+        pumpHead={pumpSummary?.pumpHead}
+        pumpFlow={pumpSummary?.pumpFlow}
+        nodes={nodes}
+        edges={edges}
+        globalParams={globalParams}
+      />
 
       <div className="flex flex-1 overflow-hidden">
         <ElementPanel onAddElement={handleAddElement} />
