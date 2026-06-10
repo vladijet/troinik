@@ -44,12 +44,16 @@ function Row({ label, value, unit, color }) {
 
 // Инспектор ребра (трубы)
 function EdgePanel({ edge, res, onUpdateEdge, onDeleteEdge }) {
+  const isReturn = !!edge.pipeProps?.isReturn;
+  const lineColor = isReturn ? '#f87171' : '#3b82f6';
+  const lineLabel = isReturn ? 'ОБРАТКА' : 'ПОДАЧА';
+
   return (
     <div className="p-3 space-y-3" style={{ color: D.text }}>
       <div className="flex justify-between items-center">
         <div>
           <div className="flex items-center gap-2">
-            <div style={{ width: 20, height: 3, background: D.accent, borderRadius: 2 }} />
+            <div style={{ width: 20, height: 3, background: lineColor, borderRadius: 2 }} />
             <span style={{ fontWeight: 700, fontSize: 13, color: D.bright }}>Труба</span>
           </div>
           <p style={{ fontSize: 9, color: D.muted, marginTop: 2 }}>{edge.id}</p>
@@ -65,6 +69,38 @@ function EdgePanel({ edge, res, onUpdateEdge, onDeleteEdge }) {
 
       <div style={{ height: 1, background: D.border }} />
 
+      {/* Переключатель подача/обратка */}
+      <div>
+        <label style={{ fontSize: 10, color: D.muted, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 6 }}>
+          Тип магистрали
+        </label>
+        <div style={{ display: 'flex', borderRadius: 6, overflow: 'hidden', border: `1px solid ${D.border}` }}>
+          <button
+            onClick={() => onUpdateEdge({ isReturn: false })}
+            style={{
+              flex: 1, height: 28, fontSize: 10, fontWeight: 700, cursor: 'pointer',
+              background: !isReturn ? '#1e3a5f' : D.card,
+              color: !isReturn ? '#60a5fa' : D.muted,
+              border: 'none', borderRight: `1px solid ${D.border}`,
+            }}>
+            ▶ ПОДАЧА
+          </button>
+          <button
+            onClick={() => onUpdateEdge({ isReturn: true })}
+            style={{
+              flex: 1, height: 28, fontSize: 10, fontWeight: 700, cursor: 'pointer',
+              background: isReturn ? '#3b0a0a' : D.card,
+              color: isReturn ? '#f87171' : D.muted,
+              border: 'none',
+            }}>
+            ◀ ОБРАТКА
+          </button>
+        </div>
+        <p style={{ fontSize: 9, color: D.muted, marginTop: 4, lineHeight: 1.4 }}>
+          Двухтрубная схема: пометьте все трубы обратной магистрали.
+        </p>
+      </div>
+
       <Field label="Длина, м">
         <SInput type="number" value={edge.pipeProps?.length ?? ''}
           onChange={e => onUpdateEdge({ length: parseFloat(e.target.value) || '' })}
@@ -78,6 +114,7 @@ function EdgePanel({ edge, res, onUpdateEdge, onDeleteEdge }) {
             Результаты
           </p>
           <div className="space-y-1.5">
+            <Row label="Тип"      value={lineLabel} unit="" color={lineColor} />
             <Row label="Диаметр"  value={res.size ? `Ø${res.size.outer}×${res.size.wall}` : '—'} unit="мм" />
             <Row label="Скорость" value={res.velocity?.toFixed(3)} unit="м/с"  color={D.warn} />
             <Row label="ΔP"       value={res.pressureLoss?.toFixed(1)} unit="Па"  color={D.warn} />

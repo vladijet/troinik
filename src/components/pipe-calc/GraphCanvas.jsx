@@ -323,6 +323,9 @@ export default function GraphCanvas({
         <marker id="arr" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
           <path d="M0,0 L6,3 L0,6 Z" fill="#3b82f6" opacity={0.7} />
         </marker>
+        <marker id="arr-ret" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+          <path d="M0,0 L6,3 L0,6 Z" fill="#ef4444" opacity={0.7} />
+        </marker>
       </defs>
 
       <rect className="cbg" width="100%" height="100%" fill={BG} />
@@ -338,22 +341,27 @@ export default function GraphCanvas({
           const mid = pathMidpoint(from, edge.fromPortId, to, edge.toPortId);
           const res = results?.[edge.id];
           const isSel = selectedId === edge.id;
+          const isReturn = !!edge.pipeProps?.isReturn;
+          const pipeColor = isReturn
+            ? (isSel ? '#fca5a5' : '#ef4444')
+            : (isSel ? '#60a5fa' : '#3b82f6');
+          const arrId = isReturn ? 'arr-ret' : 'arr';
           return (
             <g key={edge.id} onClick={e => { e.stopPropagation(); onEdgeClick(edge.id); }}
               style={{ cursor: 'pointer' }}>
               {/* hit zone */}
               <path d={d} stroke="transparent" strokeWidth={16} fill="none" />
               <path d={d} stroke="#000" strokeWidth={5} fill="none" strokeLinecap="round" opacity={0.2} />
-              <path d={d} stroke={isSel ? '#60a5fa' : '#3b82f6'} strokeWidth={isSel ? 3 : 2}
-                fill="none" strokeLinecap="round" markerEnd="url(#arr)" />
+              <path d={d} stroke={pipeColor} strokeWidth={isSel ? 3 : 2}
+                fill="none" strokeLinecap="round" markerEnd={`url(#${arrId})`} />
               {mid && (
                 <g style={{ pointerEvents: 'none' }} transform={`translate(${mid.x + 10}, ${mid.y - 20})`}>
                   {/* Фон-подложка */}
                   <rect x={-2} y={-8} width={res ? 102 : 60} height={res ? 32 : 12}
                     rx={3} fill="#0f172a" opacity={0.75} />
-                  {/* Название трубы */}
-                  <text x={0} y={0} fontSize={7} fill={isSel ? '#60a5fa' : '#475569'} fontWeight="600">
-                    {edge.id}
+                  {/* Название трубы + тип */}
+                  <text x={0} y={0} fontSize={7} fill={pipeColor} fontWeight="600">
+                    {edge.id} {isReturn ? '◀' : '▶'}
                   </text>
                   {/* Диаметр + скорость или длина */}
                   <text x={0} y={10} fontSize={7} fill={isSel ? '#93c5fd' : '#64748b'}>

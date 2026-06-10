@@ -1,19 +1,14 @@
 /**
- * Hydraulic Calculation Engine v5.0 — двухтрубная система
+ * Hydraulic Calculation Engine v6.0 — двухтрубная система с явным разделением подачи/обратки
  *
- * Ключевая идея для двухтрубной (тройниковой) системы:
- * - Граф содержит ЦИКЛЫ (подача → радиатор → обратка → насос).
- * - Нельзя использовать простой BFS/DFS-дерево, т.к. он "рвёт" циклы.
- * - Правильный подход: найти путь от насоса до каждого радиатора
- *   через ветку ПОДАЧИ (не через обратку), посчитать ΔP этого пути.
+ * Физическая модель:
+ * - Каждая труба имеет флаг isReturn: false = магистраль подачи, true = магистраль обратки.
+ * - Пользователь явно помечает трубы как «подача» или «обратка».
+ * - Для каждого радиатора находим путь по трубам ПОДАЧИ от насоса до радиатора.
+ * - Затем находим путь по трубам ОБРАТКИ от радиатора обратно до насоса.
+ * - ΔP_ветки = ΔP_подача_путь + ΔP_радиатора + ΔP_обратка_путь
  * - Насос подбирается по МАКСИМАЛЬНОМУ ΔP среди всех веток (критический путь).
  * - Расход насоса = СУММА расходов всех радиаторов.
- *
- * Алгоритм определения ветки подачи vs обратки:
- * - Запускаем BFS от насоса по ненаправленному графу.
- * - Для каждого радиатора ищем кратчайший путь от насоса.
- * - Этот путь и есть "подача" для данного радиатора.
- * - ΔP ветки = сумма потерь всех труб, тройников, углов на этом пути.
  */
 import { PIPE_TYPES } from './pipeStandards';
 import { WATER, ZETA } from './hydraulicGraph';
@@ -82,25 +77,25 @@ function localDrop(zeta, v) {
 }
 
 /**
- * BFS: находит кратчайший путь (по числу рёбер) от startId до targetId.
- * Возвращает массив рёбер [{edgeId, fromNodeId, toNodeId}] или null если пути нет.
- * Параметр excludeNodeId: узел, через который НЕ надо идти (обычно сам радиатор-target,
- * чтобы не пройти через него дважды).
+ * BFS: находит кратчайший путь от startId до targetId,
+ * проходя ТОЛЬКО по рёбрам из разрешённого множества allowedEdgeIds.
+ * Возвращает массив [{edgeId, fromNodeId, toNodeId}] или null.
  */
-function bfsPath(startId, targetId, adjUndirected) {
+function bfsPath(startId, targetId, adjUndirected, allowedEdgeIds = null) {
   if (startId === targetId) return [];
-  const prev = new Map(); // nodeId → {edgeId, fromNodeId}
+  const prev = new Map();
   const visited = new Set([startId]);
   const queue = [startId];
 
   while (queue.length > 0) {
     const cur = queue.shift();
     for (const lnk of adjUndirected[cur] || []) {
+      // Если задан фильтр по рёбрам — пропускаем "запрещённые"
+      if (allowedEdgeIds && !allowedEdgeIds.has(lnk.edgeId)) continue;
       if (visited.has(lnk.nodeId)) continue;
       visited.add(lnk.nodeId);
       prev.set(lnk.nodeId, { edgeId: lnk.edgeId, fromNodeId: cur });
       if (lnk.nodeId === targetId) {
-        // Восстанавливаем путь
         const path = [];
         let node = targetId;
         while (prev.has(node)) {
@@ -113,49 +108,53 @@ function bfsPath(startId, targetId, adjUndirected) {
       queue.push(lnk.nodeId);
     }
   }
-  return null; // путь не найден
+  return null;
 }
 
 /**
- * Для каждого тройника определяем расход через него:
- * суммируем расходы всех радиаторов, чьи пути подачи проходят через этот тройник.
+ * Строим edgeFlow по трубам подачи: для каждого ребра — суммарный расход
+ * радиаторов, чьи пути проходят через это ребро.
+ * allowedEdgeIds — множество id рёбер, по которым разрешено идти (подача или обратка).
  */
-function buildNodeFlows(pumpId, radiators, radFlow, adjUndirected) {
-  const nodeFlow = {};
-
-  for (const rad of radiators) {
-    const path = bfsPath(pumpId, rad.id, adjUndirected);
-    if (!path) continue;
-    const q = radFlow[rad.id] || 0;
-    for (const seg of path) {
-      // Добавляем расход радиатора к каждому промежуточному узлу
-      nodeFlow[seg.fromNodeId] = (nodeFlow[seg.fromNodeId] || 0) + q;
-      nodeFlow[seg.toNodeId]   = (nodeFlow[seg.toNodeId]   || 0) + q;
-    }
-  }
-
-  return nodeFlow;
-}
-
-/**
- * Строим edgeFlow: для каждого ребра — суммарный расход радиаторов,
- * чьи пути ПОДАЧИ проходят через это ребро.
- * Это правильный подход для двухтрубной системы:
- * ближние к насосу участки несут суммарный расход всех "дальних" радиаторов.
- */
-function buildEdgeFlows(pumpId, radiators, radFlow, adjUndirected) {
+function buildEdgeFlows(pumpId, radiators, radFlow, adjUndirected, allowedEdgeIds) {
   const edgeFlow = {};
-
   for (const rad of radiators) {
-    const path = bfsPath(pumpId, rad.id, adjUndirected);
+    const path = bfsPath(pumpId, rad.id, adjUndirected, allowedEdgeIds);
     if (!path) continue;
     const q = radFlow[rad.id] || 0;
     for (const seg of path) {
       edgeFlow[seg.edgeId] = (edgeFlow[seg.edgeId] || 0) + q;
     }
   }
-
   return edgeFlow;
+}
+
+/**
+ * Строим nodeFlow: для каждого узла — суммарный расход всех радиаторов,
+ * чьи пути (подача + обратка) проходят через этот узел.
+ */
+function buildNodeFlows(pumpId, radiators, radFlow, adjUndirected, supplyEdgeIds, returnEdgeIds) {
+  const nodeFlow = {};
+  for (const rad of radiators) {
+    const q = radFlow[rad.id] || 0;
+    // Путь подачи: от насоса до радиатора
+    const supplyPath = bfsPath(pumpId, rad.id, adjUndirected, supplyEdgeIds);
+    if (supplyPath) {
+      for (const seg of supplyPath) {
+        nodeFlow[seg.fromNodeId] = (nodeFlow[seg.fromNodeId] || 0) + q;
+        nodeFlow[seg.toNodeId]   = (nodeFlow[seg.toNodeId]   || 0) + q;
+      }
+    }
+    // Путь обратки: от радиатора обратно до насоса
+    const returnPath = bfsPath(rad.id, pumpId, adjUndirected, returnEdgeIds);
+    if (returnPath) {
+      for (const seg of returnPath) {
+        nodeFlow[seg.fromNodeId] = (nodeFlow[seg.fromNodeId] || 0) + q;
+        nodeFlow[seg.toNodeId]   = (nodeFlow[seg.toNodeId]   || 0) + q;
+      }
+    }
+  }
+  return nodeFlow;
 }
 
 export function calcHydraulicGraph(nodes, edges, globalParams) {
@@ -197,31 +196,54 @@ export function calcHydraulicGraph(nodes, edges, globalParams) {
     adjUndirected[e.toNodeId]?.push({ edgeId: e.id, nodeId: e.fromNodeId });
   });
 
-  // ── 4. Расходы по рёбрам и узлам (двухтрубная логика) ─────────────────────
-  // edgeFlow: для каждого ребра суммируем расходы всех радиаторов,
-  // чьи кратчайшие пути от насоса проходят через это ребро.
-  const edgeFlow = buildEdgeFlows(pump.id, radiators, radFlow, adjUndirected);
-  const nodeFlow = buildNodeFlows(pump.id, radiators, radFlow, adjUndirected);
+  // ── 4. Разделяем трубы на подачу и обратку ────────────────────────────────
+  // isReturn: true → труба обратки, false/undefined → труба подачи
+  const supplyEdgeIds = new Set(edges.filter(e => !e.pipeProps?.isReturn).map(e => e.id));
+  const returnEdgeIds = new Set(edges.filter(e =>  e.pipeProps?.isReturn).map(e => e.id));
 
-  // Для рёбер, не попавших ни в один путь подачи (рёбра обратки) —
-  // используем расход узла-источника (меньшего из двух концов)
+  // Если пользователь не пометил ни одной обратки — fallback к старому поведению
+  // (все трубы считаются подачей, что соответствует однотрубной схеме)
+  const hasTwoLineModel = returnEdgeIds.size > 0;
+
+  const effectiveSupplyIds = hasTwoLineModel ? supplyEdgeIds : null; // null = все рёбра
+  const effectiveReturnIds = hasTwoLineModel ? returnEdgeIds : null;
+
+  // ── 5. Расходы по рёбрам ──────────────────────────────────────────────────
+  const edgeFlow = buildEdgeFlows(pump.id, radiators, radFlow, adjUndirected, effectiveSupplyIds);
+  const nodeFlow = buildNodeFlows(pump.id, radiators, radFlow, adjUndirected, effectiveSupplyIds, effectiveReturnIds);
+
+  // Для рёбер обратки — расход совпадает с расходом рёбер подачи у того же радиатора.
+  // Заполняем edgeFlow для обраток: ищем расход через путь обратки.
+  if (hasTwoLineModel) {
+    const returnEdgeFlow = buildEdgeFlows(radiators[0]?.id, radiators, radFlow, adjUndirected, effectiveReturnIds);
+    // Строим edgeFlow обратки для каждого радиатора
+    for (const rad of radiators) {
+      const returnPath = bfsPath(rad.id, pump.id, adjUndirected, effectiveReturnIds);
+      if (!returnPath) continue;
+      const q = radFlow[rad.id] || 0;
+      for (const seg of returnPath) {
+        edgeFlow[seg.edgeId] = (edgeFlow[seg.edgeId] || 0) + q;
+      }
+    }
+  }
+
+  // Заполняем оставшиеся рёбра минимальным расходом
   edges.forEach(e => {
     if (!edgeFlow[e.id]) {
-      // Это ребро обратки или изолированное — берём минимальный расход концов
       const flowA = nodeFlow[e.fromNodeId] || 0;
       const flowB = nodeFlow[e.toNodeId]   || 0;
       edgeFlow[e.id] = Math.max(flowA, flowB, MIN_FLOW_LPM);
     }
   });
 
-  console.log('[HydroCalc v5] edgeFlow:', JSON.stringify(edgeFlow));
-  console.log('[HydroCalc v5] nodeFlow:', JSON.stringify(nodeFlow));
+  console.log('[HydroCalc v6] hasTwoLineModel:', hasTwoLineModel);
+  console.log('[HydroCalc v6] edgeFlow:', JSON.stringify(edgeFlow));
+  console.log('[HydroCalc v6] nodeFlow:', JSON.stringify(nodeFlow));
 
-  // ── 5. Расчёт диаметров и потерь ──────────────────────────────────────────
+  // ── 6. Расчёт диаметров и потерь ──────────────────────────────────────────
   function calcAllResults(forceMinInnerByEdge = {}) {
     const res = {};
 
-    // Трубы
     for (const e of edges) {
       const flow = edgeFlow[e.id] || MIN_FLOW_LPM;
       const len  = parseFloat(e.pipeProps.length);
@@ -234,10 +256,10 @@ export function calcHydraulicGraph(nodes, edges, globalParams) {
         velocity: size?.velocity || 0,
         pressureLoss: dp,
         specificDp: specificPressureDrop(flow, size, pipeType),
+        isReturn: !!e.pipeProps?.isReturn,
       };
     }
 
-    // Тройники
     for (const n of nodes.filter(nd => nd.type === 'tee')) {
       const flow = nodeFlow[n.id] || 0;
       const size = selectPipeSize(flow, pipeType);
@@ -251,7 +273,6 @@ export function calcHydraulicGraph(nodes, edges, globalParams) {
       };
     }
 
-    // Углы
     for (const n of nodes.filter(nd => nd.type === 'elbow')) {
       const flow = nodeFlow[n.id] || MIN_FLOW_LPM;
       const size = selectPipeSize(flow, pipeType);
@@ -259,7 +280,6 @@ export function calcHydraulicGraph(nodes, edges, globalParams) {
       res[n.id] = { flowRate: flow, size, pressureLoss: localDrop(zeta.elbow_90, v) };
     }
 
-    // Радиаторы
     for (const n of radiators) {
       const flow = radFlow[n.id] || 0;
       const size = selectPipeSize(flow, pipeType);
@@ -270,25 +290,54 @@ export function calcHydraulicGraph(nodes, edges, globalParams) {
     return res;
   }
 
-  // ── 6. Первый расчёт ───────────────────────────────────────────────────────
+  // ── 7. Первый расчёт ───────────────────────────────────────────────────────
   let elementResults = calcAllResults();
 
-  // ── 7. Критический путь: для каждого радиатора считаем ΔP пути подачи ─────
-  // ΔP_ветки = сумма потерь в трубах + фитингах на пути от насоса до радиатора
+  // ── 8. Критический путь ───────────────────────────────────────────────────
+  // В двухтрубной модели: ΔP_ветки = ΔP_подача + ΔP_радиатора + ΔP_обратка
   function calcBranchDp(radId) {
-    const path = bfsPath(pump.id, radId, adjUndirected);
-    if (!path) return 0;
     let dp = 0;
-    for (const seg of path) {
-      dp += elementResults[seg.edgeId]?.pressureLoss || 0;
-      // Добавляем потери на промежуточных узлах (тройники, углы)
-      const nd = nodes.find(n => n.id === seg.toNodeId);
-      if (nd && nd.type !== 'pump' && nd.type !== 'radiator') {
-        dp += elementResults[nd.id]?.pressureLoss || 0;
+
+    if (hasTwoLineModel) {
+      // Путь подачи: насос → радиатор, только по трубам подачи
+      const supplyPath = bfsPath(pump.id, radId, adjUndirected, effectiveSupplyIds);
+      if (supplyPath) {
+        for (const seg of supplyPath) {
+          dp += elementResults[seg.edgeId]?.pressureLoss || 0;
+          const nd = nodes.find(n => n.id === seg.toNodeId);
+          if (nd && nd.type !== 'pump' && nd.type !== 'radiator') {
+            dp += elementResults[nd.id]?.pressureLoss || 0;
+          }
+        }
       }
+      // Потери самого радиатора
+      dp += elementResults[radId]?.pressureLoss || 0;
+      // Путь обратки: радиатор → насос, только по трубам обратки
+      const returnPath = bfsPath(radId, pump.id, adjUndirected, effectiveReturnIds);
+      if (returnPath) {
+        for (const seg of returnPath) {
+          dp += elementResults[seg.edgeId]?.pressureLoss || 0;
+          const nd = nodes.find(n => n.id === seg.toNodeId);
+          if (nd && nd.type !== 'pump' && nd.type !== 'radiator') {
+            dp += elementResults[nd.id]?.pressureLoss || 0;
+          }
+        }
+      }
+    } else {
+      // Fallback: однотрубная — только путь подачи
+      const path = bfsPath(pump.id, radId, adjUndirected, null);
+      if (path) {
+        for (const seg of path) {
+          dp += elementResults[seg.edgeId]?.pressureLoss || 0;
+          const nd = nodes.find(n => n.id === seg.toNodeId);
+          if (nd && nd.type !== 'pump' && nd.type !== 'radiator') {
+            dp += elementResults[nd.id]?.pressureLoss || 0;
+          }
+        }
+      }
+      dp += elementResults[radId]?.pressureLoss || 0;
     }
-    // Добавляем потери самого радиатора
-    dp += elementResults[radId]?.pressureLoss || 0;
+
     return dp;
   }
 
@@ -296,21 +345,23 @@ export function calcHydraulicGraph(nodes, edges, globalParams) {
   let criticalRadId = null;
   for (const rad of radiators) {
     const dp = calcBranchDp(rad.id);
-    console.log(`[HydroCalc v5] branch ΔP для ${rad.id}: ${(dp/1000).toFixed(2)} кПа`);
+    console.log(`[HydroCalc v6] branch ΔP для ${rad.id}: ${(dp/1000).toFixed(2)} кПа`);
     if (dp > maxDp) { maxDp = dp; criticalRadId = rad.id; }
   }
 
-  // ── 8. Автокоррекция при ΔP > 20 кПа ─────────────────────────────────────
+  // ── 9. Автокоррекция при ΔP > 20 кПа ─────────────────────────────────────
   const warnings = [];
   if (maxDp > MAX_DP_SYSTEM && criticalRadId) {
     warnings.push(`Сопротивление критической ветки ${(maxDp/1000).toFixed(1)} кПа > 20 кПа. Выполняется автокоррекция.`);
 
-    const critPath = bfsPath(pump.id, criticalRadId, adjUndirected);
+    const critSupplyPath = bfsPath(pump.id, criticalRadId, adjUndirected, effectiveSupplyIds);
+    const critReturnPath = hasTwoLineModel ? bfsPath(criticalRadId, pump.id, adjUndirected, effectiveReturnIds) : null;
     const forceMinInnerByEdge = {};
     const spec = PIPE_TYPES[pipeType];
 
-    if (critPath) {
-      for (const seg of critPath) {
+    for (const path of [critSupplyPath, critReturnPath]) {
+      if (!path) continue;
+      for (const seg of path) {
         const currentSize = elementResults[seg.edgeId]?.size;
         if (!currentSize) continue;
         const idx = spec.sizes.findIndex(s => s.inner === currentSize.inner);
@@ -335,7 +386,11 @@ export function calcHydraulicGraph(nodes, edges, globalParams) {
     }
   }
 
-  // ── 9. Насос ───────────────────────────────────────────────────────────────
+  if (!hasTwoLineModel) {
+    warnings.push('Трубы обратки не помечены. Расчёт ведётся как для однотрубной схемы. Пометьте трубы обратки в инспекторе.');
+  }
+
+  // ── 10. Насос ──────────────────────────────────────────────────────────────
   const pumpFlow = Object.values(radFlow).reduce((a, b) => a + b, 0);
   const pumpHead = maxDp / (WATER.density * 9.81);
   elementResults[pump.id] = { flowRate: pumpFlow, pressure: maxDp, head: pumpHead };
@@ -348,5 +403,6 @@ export function calcHydraulicGraph(nodes, edges, globalParams) {
     warnings,
     systemDp: maxDp,
     systemDpOk: maxDp <= MAX_DP_SYSTEM,
+    hasTwoLineModel,
   };
 }
