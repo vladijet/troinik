@@ -166,14 +166,16 @@ function ElementResultRow({ id, res, nodes, edges }) {
 }
 
 // ─── PDF helpers ─────────────────────────────────────────────────────────────
-// Загрузить шрифт Roboto (latin+cyrillic) как base64 и зарегистрировать в jsPDF
+// Загрузить шрифт Roboto TTF (latin+cyrillic) и зарегистрировать в jsPDF
+// Возвращает имя шрифта для использования ('Roboto' или 'helvetica' как fallback)
 async function loadRobotoFont(doc) {
   try {
-    // Загружаем Regular и Bold из Google Fonts CDN
+    // Используем TTF-файлы (не woff2) — jsPDF требует TTF
     const [regResp, boldResp] = await Promise.all([
-      fetch('https://fonts.gstatic.com/s/roboto/v32/KFOmCnqEu92Fr1Mu4mxKKTU1Kg.woff2'),
-      fetch('https://fonts.gstatic.com/s/roboto/v32/KFOlCnqEu92Fr1MmWUlfBBc4AMP6lQ.woff2'),
+      fetch('https://fonts.gstatic.com/s/roboto/v30/KFOmCnqEu92Fr1Mu4mxP.ttf'),
+      fetch('https://fonts.gstatic.com/s/roboto/v30/KFOlCnqEu92Fr1MmWUlfBBc-.ttf'),
     ]);
+    if (!regResp.ok || !boldResp.ok) return 'helvetica';
     const [regBuf, boldBuf] = await Promise.all([regResp.arrayBuffer(), boldResp.arrayBuffer()]);
 
     const toBase64 = (buf) => {
@@ -187,9 +189,9 @@ async function loadRobotoFont(doc) {
     doc.addFont('Roboto-Regular.ttf', 'Roboto', 'normal');
     doc.addFileToVFS('Roboto-Bold.ttf', toBase64(boldBuf));
     doc.addFont('Roboto-Bold.ttf', 'Roboto', 'bold');
-    return true;
+    return 'Roboto';
   } catch {
-    return false; // fallback — продолжим без Roboto
+    return 'helvetica'; // fallback
   }
 }
 
@@ -200,8 +202,8 @@ function hLine(doc, y, W, color = [30, 58, 95]) {
 }
 
 // Секция-заголовок
-function sectionTitle(doc, text, y, W) {
-  doc.setFont('Roboto', 'bold');
+function sectionTitle(doc, text, y, W, font) {
+  doc.setFont(font, 'bold');
   doc.setFontSize(11);
   doc.setTextColor(30, 58, 95);
   doc.text(text, 14, y);
@@ -210,15 +212,15 @@ function sectionTitle(doc, text, y, W) {
 }
 
 // Строка таблицы (label + value по правому краю)
-function tableRow(doc, label, value, y, W, labelColor, valueColor) {
-  doc.setFont('Roboto', 'normal');
+function tableRow(doc, label, value, y, W, font, labelColor, valueColor) {
+  doc.setFont(font, 'normal');
   doc.setFontSize(9);
   doc.setTextColor(...(labelColor || [71, 85, 105]));
   doc.text(label, 18, y);
-  doc.setFont('Roboto', 'bold');
+  doc.setFont(font, 'bold');
   doc.setTextColor(...(valueColor || [30, 41, 59]));
   doc.text(value, W - 14, y, { align: 'right' });
-  doc.setFont('Roboto', 'normal');
+  doc.setFont(font, 'normal');
   return y + 5.5;
 }
 
@@ -246,7 +248,7 @@ export default function ResultsDialog({ open, onClose, results, pumpHead, pumpFl
       const MARGIN = 14;
 
       // ── Шрифт Roboto ────────────────────────────────────────────────────
-      await loadRobotoFont(doc);
+      const font = await loadRobotoFont(doc);
 
       // ══════════════════════════════════════════════════════════════════════
       // СТРАНИЦА 1 — Схема отопления
@@ -273,14 +275,14 @@ export default function ResultsDialog({ open, onClose, results, pumpHead, pumpFl
         const imgData = canvas.toDataURL('image/png');
 
         // Заголовок страницы
-        doc.setFont('Roboto', 'bold');
+        doc.setFont(font, 'bold');
         doc.setFontSize(14);
         doc.setTextColor(30, 58, 95);
-        doc.text('HydroCalc — Схема отопления', W / 2, 10, { align: 'center' });
-        doc.setFont('Roboto', 'normal');
+        doc.text('HydroCalc - Schema', W / 2, 10, { align: 'center' });
+        doc.setFont(font, 'normal');
         doc.setFontSize(8);
         doc.setTextColor(100, 116, 139);
-        doc.text(`Дата: ${new Date().toLocaleDateString('ru-RU')}`, W / 2, 16, { align: 'center' });
+        doc.text(`Date: ${new Date().toLocaleDateString('ru-RU')}`, W / 2, 16, { align: 'center' });
 
         // Вписываем изображение схемы с сохранением пропорций
         const imgW = W - MARGIN * 2;
@@ -296,10 +298,10 @@ export default function ResultsDialog({ open, onClose, results, pumpHead, pumpFl
       let y = 14;
 
       // Заголовок
-      doc.setFont('Roboto', 'bold');
+      doc.setFont(font, 'bold');
       doc.setFontSize(13);
       doc.setTextColor(30, 58, 95);
-      doc.text('HydroCalc — Результаты расчёта', W / 2, y, { align: 'center' });
+      doc.text('HydroCalc - Results', W / 2, y, { align: 'center' });
       y += 8;
 
       // Две колонки: левая — параметры системы, правая — насос
@@ -307,43 +309,44 @@ export default function ResultsDialog({ open, onClose, results, pumpHead, pumpFl
       const col2X = MARGIN + colW + 10;
 
       // Левая: Параметры системы
-      doc.setFont('Roboto', 'bold');
+      doc.setFont(font, 'bold');
       doc.setFontSize(10);
       doc.setTextColor(30, 58, 95);
-      doc.text('Параметры системы', MARGIN, y);
+      doc.text('System Parameters', MARGIN, y);
       doc.line(MARGIN, y + 2, MARGIN + colW, y + 2);
 
       // Правая: Параметры насоса
-      doc.text('Параметры насоса', col2X, y);
+      doc.text('Pump Parameters', col2X, y);
       doc.line(col2X, y + 2, col2X + colW, y + 2);
       y += 8;
 
+      const pipeTypeLabel = PIPE_TYPE_LABELS[globalParams?.pipeType] || globalParams?.pipeType || '-';
       const sysRows = [
-        ['Материал труб',          PIPE_TYPE_LABELS[globalParams?.pipeType] || globalParams?.pipeType || '—'],
-        ['Температура подачи',     `${globalParams?.tSupply || '—'} °C`],
-        ['Температура обратки',    `${globalParams?.tReturn || '—'} °C`],
-        ['Температура воздуха',    `${globalParams?.tAir || '—'} °C`],
+        ['Pipe material',    pipeTypeLabel],
+        ['Supply temp',      `${globalParams?.tSupply || '-'} C`],
+        ['Return temp',      `${globalParams?.tReturn || '-'} C`],
+        ['Air temp',         `${globalParams?.tAir || '-'} C`],
       ];
       const pumpRows = [
-        ['Расчётный напор (H)',    `${H.toFixed(2)} м вод.ст.`],
-        ['Расчётный расход (Q)',   `${Q.toFixed(2)} л/мин`],
-        ['Рекомендуемая модель',  recommended ? recommended.model : 'см. каталог'],
+        ['Head (H)',         `${H.toFixed(2)} m`],
+        ['Flow (Q)',         `${Q.toFixed(2)} l/min`],
+        ['Recommended',     recommended ? recommended.model : 'see catalog'],
       ];
 
       const rowH = 5.5;
       sysRows.forEach(([lbl, val]) => {
-        doc.setFont('Roboto', 'normal'); doc.setFontSize(9); doc.setTextColor(71, 85, 105);
+        doc.setFont(font, 'normal'); doc.setFontSize(9); doc.setTextColor(71, 85, 105);
         doc.text(lbl, MARGIN + 2, y);
-        doc.setFont('Roboto', 'bold'); doc.setTextColor(30, 41, 59);
+        doc.setFont(font, 'bold'); doc.setTextColor(30, 41, 59);
         doc.text(val, MARGIN + colW, y, { align: 'right' });
         y += rowH;
       });
 
       let y2 = y - sysRows.length * rowH;
       pumpRows.forEach(([lbl, val]) => {
-        doc.setFont('Roboto', 'normal'); doc.setFontSize(9); doc.setTextColor(71, 85, 105);
+        doc.setFont(font, 'normal'); doc.setFontSize(9); doc.setTextColor(71, 85, 105);
         doc.text(lbl, col2X + 2, y2);
-        doc.setFont('Roboto', 'bold'); doc.setTextColor(30, 41, 59);
+        doc.setFont(font, 'bold'); doc.setTextColor(30, 41, 59);
         doc.text(val, col2X + colW, y2, { align: 'right' });
         y2 += rowH;
       });
@@ -351,24 +354,25 @@ export default function ResultsDialog({ open, onClose, results, pumpHead, pumpFl
       y = Math.max(y, y2) + 4;
 
       // Результаты по элементам
-      y = sectionTitle(doc, 'Результаты по элементам', y, W);
+      y = sectionTitle(doc, 'Element Results', y, W, font);
       Object.entries(results).forEach(([id, res]) => {
         if (y > H_PAGE - 16) { doc.addPage(); y = 14; }
         const node = nodes?.find(n => n.id === id);
         const edge = edges?.find(e => e.id === id);
         let label = id, valueStr = '';
         if (node) {
-          label = node.type === 'radiator' ? `Радиатор: ${node.props?.roomName || id}`
-            : node.type === 'pump' ? 'Насос'
-            : node.type === 'tee' ? 'Тройник' : 'Угол 90°';
-          if (node.type === 'radiator') valueStr = `Q=${res.flowRate?.toFixed(2)} л/мин, ΔP=${res.pressureLoss?.toFixed(0)} Па`;
-          if (node.type === 'pump') valueStr = `H=${res.head?.toFixed(2)} м, Q=${res.flowRate?.toFixed(1)} л/мин`;
-          if (['tee','elbow'].includes(node.type)) valueStr = `ΔP=${(res.pressureLossPass ?? res.pressureLoss ?? 0).toFixed(0)} Па`;
+          const roomName = node.props?.roomName || id;
+          label = node.type === 'radiator' ? `Radiator: ${roomName}`
+            : node.type === 'pump' ? 'Pump'
+            : node.type === 'tee' ? 'Tee' : 'Elbow 90';
+          if (node.type === 'radiator') valueStr = `Q=${res.flowRate?.toFixed(2)} l/min, dP=${res.pressureLoss?.toFixed(0)} Pa`;
+          if (node.type === 'pump') valueStr = `H=${res.head?.toFixed(2)} m, Q=${res.flowRate?.toFixed(1)} l/min`;
+          if (['tee','elbow'].includes(node.type)) valueStr = `dP=${(res.pressureLossPass ?? res.pressureLoss ?? 0).toFixed(0)} Pa`;
         } else if (edge) {
-          label = `Труба ${id}`;
-          valueStr = `Ø${res.size?.outer}×${res.size?.wall}, ${res.velocity?.toFixed(2)} м/с, ΔP=${res.pressureLoss?.toFixed(0)} Па`;
+          label = `Pipe ${id}`;
+          valueStr = `${res.size?.outer}x${res.size?.wall}mm, ${res.velocity?.toFixed(2)} m/s, dP=${res.pressureLoss?.toFixed(0)} Pa`;
         }
-        y = tableRow(doc, label, valueStr, y, W);
+        y = tableRow(doc, label, valueStr, y, W, font);
       });
 
       // ══════════════════════════════════════════════════════════════════════
@@ -377,12 +381,12 @@ export default function ResultsDialog({ open, onClose, results, pumpHead, pumpFl
       doc.addPage();
       y = 14;
 
-      y = sectionTitle(doc, 'Спецификация материалов', y, W);
+      y = sectionTitle(doc, 'Bill of Materials', y, W, font);
 
       // Трубы
       pipeSpec.forEach(({ size, len }) => {
         if (y > H_PAGE - 16) { doc.addPage(); y = 14; }
-        y = tableRow(doc, size, `${len.toFixed(1)} м`, y, W, [71, 85, 105], [30, 41, 59]);
+        y = tableRow(doc, size, `${len.toFixed(1)} m`, y, W, font, [71, 85, 105], [30, 41, 59]);
       });
 
       // Фитинги и оборудование
@@ -390,9 +394,9 @@ export default function ResultsDialog({ open, onClose, results, pumpHead, pumpFl
         if (item.qty <= 0) return;
         if (y > H_PAGE - 16) { doc.addPage(); y = 14; }
         const nameLines = doc.splitTextToSize(item.name, W - MARGIN * 2 - 50);
-        doc.setFont('Roboto', 'normal'); doc.setFontSize(9); doc.setTextColor(71, 85, 105);
+        doc.setFont(font, 'normal'); doc.setFontSize(9); doc.setTextColor(71, 85, 105);
         doc.text(nameLines, 18, y);
-        doc.setFont('Roboto', 'bold'); doc.setTextColor(30, 41, 59);
+        doc.setFont(font, 'bold'); doc.setTextColor(30, 41, 59);
         doc.text(`${item.qty} ${item.unit}`, W - MARGIN, y, { align: 'right' });
         y += 5.5 * nameLines.length;
       });
@@ -402,13 +406,13 @@ export default function ResultsDialog({ open, onClose, results, pumpHead, pumpFl
       // Рекомендация насоса
       if (recommended) {
         if (y > H_PAGE - 30) { doc.addPage(); y = 14; }
-        y = sectionTitle(doc, 'Рекомендуемый насос Shinhoo', y, W);
-        doc.setFont('Roboto', 'bold'); doc.setFontSize(11); doc.setTextColor(59, 130, 246);
+        y = sectionTitle(doc, 'Recommended Pump - Shinhoo', y, W, font);
+        doc.setFont(font, 'bold'); doc.setFontSize(11); doc.setTextColor(59, 130, 246);
         doc.text(recommended.model, 18, y); y += 6;
-        doc.setFont('Roboto', 'normal'); doc.setFontSize(9); doc.setTextColor(71, 85, 105);
+        doc.setFont(font, 'normal'); doc.setFontSize(9); doc.setTextColor(71, 85, 105);
         doc.text(recommended.desc, 18, y); y += 5;
-        doc.text(`Макс. напор: ${recommended.H_max} м  |  Макс. расход: ${recommended.Q_max} л/мин`, 18, y); y += 5;
-        doc.text(`Расчётные параметры с запасом 20%: H ≥ ${(H * 1.2).toFixed(1)} м, Q ≥ ${(Q * 1.2).toFixed(1)} л/мин`, 18, y); y += 5;
+        doc.text(`Max head: ${recommended.H_max} m  |  Max flow: ${recommended.Q_max} l/min`, 18, y); y += 5;
+        doc.text(`Required (x1.2): H >= ${(H * 1.2).toFixed(1)} m, Q >= ${(Q * 1.2).toFixed(1)} l/min`, 18, y); y += 5;
         doc.setTextColor(59, 130, 246);
         doc.text(recommended.url, 18, y);
       }
@@ -417,10 +421,10 @@ export default function ResultsDialog({ open, onClose, results, pumpHead, pumpFl
       const totalPages = doc.getNumberOfPages();
       for (let i = 1; i <= totalPages; i++) {
         doc.setPage(i);
-        doc.setFont('Roboto', 'normal');
+        doc.setFont(font, 'normal');
         doc.setFontSize(7);
         doc.setTextColor(100, 116, 139);
-        doc.text(`Стр. ${i} из ${totalPages}  ·  Сгенерировано HydroCalc · shinhoopump.ru`, W / 2, H_PAGE - 4, { align: 'center' });
+        doc.text(`Page ${i} of ${totalPages}  -  HydroCalc  -  shinhoopump.ru`, W / 2, H_PAGE - 4, { align: 'center' });
       }
 
       doc.save('hydrocalc-results.pdf');
