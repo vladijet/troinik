@@ -166,33 +166,83 @@ function ElementResultRow({ id, res, nodes, edges }) {
 }
 
 // ─── PDF helpers ─────────────────────────────────────────────────────────────
-// Загрузить шрифт Roboto TTF (latin+cyrillic) и зарегистрировать в jsPDF
-// Возвращает имя шрифта для использования ('Roboto' или 'helvetica' как fallback)
-async function loadRobotoFont(doc) {
+
+// Транслитерация кириллицы → латиница для jsPDF (helvetica не поддерживает кириллицу)
+function toAscii(str) {
+  if (!str) return '';
+  const map = {
+    'а':'a','б':'b','в':'v','г':'g','д':'d','е':'e','ё':'e','ж':'zh','з':'z',
+    'и':'i','й':'j','к':'k','л':'l','м':'m','н':'n','о':'o','п':'p','р':'r',
+    'с':'s','т':'t','у':'u','ф':'f','х':'kh','ц':'ts','ч':'ch','ш':'sh',
+    'щ':'shch','ъ':'','ы':'y','ь':'','э':'e','ю':'yu','я':'ya',
+    'А':'A','Б':'B','В':'V','Г':'G','Д':'D','Е':'E','Ё':'E','Ж':'Zh','З':'Z',
+    'И':'I','Й':'J','К':'K','Л':'L','М':'M','Н':'N','О':'O','П':'P','Р':'R',
+    'С':'S','Т':'T','У':'U','Ф':'F','Х':'Kh','Ц':'Ts','Ч':'Ch','Ш':'Sh',
+    'Щ':'Shch','Ъ':'','Ы':'Y','Ь':'','Э':'E','Ю':'Yu','Я':'Ya',
+  };
+  return str.split('').map(c => map[c] !== undefined ? map[c] : c).join('');
+}
+
+// Захватить SVG через html2canvas, вырезав реальный bounding box содержимого
+async function captureGraphCanvas(svgEl) {
+  // Вычисляем bounding box всего содержимого (не viewport)
+  const contentGroup = svgEl.querySelector('g[transform]');
+  let bbox = null;
   try {
-    // Используем TTF-файлы (не woff2) — jsPDF требует TTF
-    const [regResp, boldResp] = await Promise.all([
-      fetch('https://fonts.gstatic.com/s/roboto/v30/KFOmCnqEu92Fr1Mu4mxP.ttf'),
-      fetch('https://fonts.gstatic.com/s/roboto/v30/KFOlCnqEu92Fr1MmWUlfBBc-.ttf'),
-    ]);
-    if (!regResp.ok || !boldResp.ok) return 'helvetica';
-    const [regBuf, boldBuf] = await Promise.all([regResp.arrayBuffer(), boldResp.arrayBuffer()]);
+    bbox = contentGroup ? contentGroup.getBBox() : null;
+  } catch (e) { bbox = null; }
 
-    const toBase64 = (buf) => {
-      let binary = '';
-      const bytes = new Uint8Array(buf);
-      for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
-      return btoa(binary);
-    };
+  // Получаем текущий transform (translate + scale)
+  const transform = contentGroup?.getAttribute('transform') || '';
+  const tMatch = transform.match(/translate\(([^,]+),([^)]+)\)/);
+  const sMatch = transform.match(/scale\(([^)]+)\)/);
+  const tx = tMatch ? parseFloat(tMatch[1]) : 0;
+  const ty = tMatch ? parseFloat(tMatch[2]) : 0;
+  const scale = sMatch ? parseFloat(sMatch[1]) : 1;
 
-    doc.addFileToVFS('Roboto-Regular.ttf', toBase64(regBuf));
-    doc.addFont('Roboto-Regular.ttf', 'Roboto', 'normal');
-    doc.addFileToVFS('Roboto-Bold.ttf', toBase64(boldBuf));
-    doc.addFont('Roboto-Bold.ttf', 'Roboto', 'bold');
-    return 'Roboto';
-  } catch {
-    return 'helvetica'; // fallback
+  const PAD = 40;
+  let cropX = 0, cropY = 0, cropW = svgEl.clientWidth, cropH = svgEl.clientHeight;
+
+  if (bbox && bbox.width > 0 && bbox.height > 0) {
+    // Переводим bbox из canvas-координат в экранные
+    cropX = Math.max(0, tx + bbox.x * scale - PAD);
+    cropY = Math.max(0, ty + bbox.y * scale - PAD);
+    const right  = Math.min(svgEl.clientWidth,  tx + (bbox.x + bbox.width)  * scale + PAD);
+    const bottom = Math.min(svgEl.clientHeight, ty + (bbox.y + bbox.height) * scale + PAD);
+    cropW = right - cropX;
+    cropH = bottom - cropY;
   }
+
+  // Рендерим весь SVG в canvas
+  const wrapper = document.createElement('div');
+  wrapper.style.cssText = `position:fixed;left:-9999px;top:0;width:${svgEl.clientWidth}px;height:${svgEl.clientHeight}px;background:#0f172a;overflow:hidden;`;
+  const clone = svgEl.cloneNode(true);
+  clone.style.width = svgEl.clientWidth + 'px';
+  clone.style.height = svgEl.clientHeight + 'px';
+  wrapper.appendChild(clone);
+  document.body.appendChild(wrapper);
+
+  const fullCanvas = await html2canvas(wrapper, {
+    backgroundColor: '#0f172a',
+    scale: 2,
+    useCORS: true,
+    logging: false,
+    width: svgEl.clientWidth,
+    height: svgEl.clientHeight,
+  });
+  document.body.removeChild(wrapper);
+
+  // Вырезаем только область с содержимым
+  const cropped = document.createElement('canvas');
+  const dpr = 2;
+  cropped.width  = cropW  * dpr;
+  cropped.height = cropH * dpr;
+  const ctx = cropped.getContext('2d');
+  ctx.fillStyle = '#0f172a';
+  ctx.fillRect(0, 0, cropped.width, cropped.height);
+  ctx.drawImage(fullCanvas, cropX * dpr, cropY * dpr, cropW * dpr, cropH * dpr, 0, 0, cropped.width, cropped.height);
+
+  return { imgData: cropped.toDataURL('image/png'), aspectRatio: cropH / cropW };
 }
 
 // Нарисовать горизонтальную линию-разделитель
@@ -243,36 +293,17 @@ export default function ResultsDialog({ open, onClose, results, pumpHead, pumpFl
     try {
       // ── Инициализация landscape A4 ──────────────────────────────────────
       const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
-      const W = 297; // ширина landscape A4
+      const W = 297;
       const H_PAGE = 210;
       const MARGIN = 14;
-
-      // ── Шрифт Roboto ────────────────────────────────────────────────────
-      const font = await loadRobotoFont(doc);
+      const font = 'helvetica'; // helvetica встроен в jsPDF, не требует загрузки
 
       // ══════════════════════════════════════════════════════════════════════
       // СТРАНИЦА 1 — Схема отопления
       // ══════════════════════════════════════════════════════════════════════
       const svgEl = canvasRef?.current;
       if (svgEl) {
-        // Создаём временный div с белым фоном для html2canvas
-        const wrapper = document.createElement('div');
-        wrapper.style.cssText = `position:fixed;left:-9999px;top:0;width:${svgEl.clientWidth}px;height:${svgEl.clientHeight}px;background:#0f172a;`;
-        const clone = svgEl.cloneNode(true);
-        clone.style.width = svgEl.clientWidth + 'px';
-        clone.style.height = svgEl.clientHeight + 'px';
-        wrapper.appendChild(clone);
-        document.body.appendChild(wrapper);
-
-        const canvas = await html2canvas(wrapper, {
-          backgroundColor: '#0f172a',
-          scale: 1.5,
-          useCORS: true,
-          logging: false,
-        });
-        document.body.removeChild(wrapper);
-
-        const imgData = canvas.toDataURL('image/png');
+        const { imgData, aspectRatio } = await captureGraphCanvas(svgEl);
 
         // Заголовок страницы
         doc.setFont(font, 'bold');
@@ -284,11 +315,17 @@ export default function ResultsDialog({ open, onClose, results, pumpHead, pumpFl
         doc.setTextColor(100, 116, 139);
         doc.text(`Date: ${new Date().toLocaleDateString('ru-RU')}`, W / 2, 16, { align: 'center' });
 
-        // Вписываем изображение схемы с сохранением пропорций
-        const imgW = W - MARGIN * 2;
-        const ratio = canvas.height / canvas.width;
-        const imgH = Math.min(imgW * ratio, H_PAGE - 24);
-        doc.addImage(imgData, 'PNG', MARGIN, 20, imgW, imgH);
+        // Вписываем схему полностью на страницу с сохранением пропорций
+        const availW = W - MARGIN * 2;
+        const availH = H_PAGE - 22;
+        let imgW = availW;
+        let imgH = imgW * aspectRatio;
+        if (imgH > availH) {
+          imgH = availH;
+          imgW = imgH / aspectRatio;
+        }
+        const imgX = MARGIN + (availW - imgW) / 2;
+        doc.addImage(imgData, 'PNG', imgX, 20, imgW, imgH);
       }
 
       // ══════════════════════════════════════════════════════════════════════
@@ -361,7 +398,7 @@ export default function ResultsDialog({ open, onClose, results, pumpHead, pumpFl
         const edge = edges?.find(e => e.id === id);
         let label = id, valueStr = '';
         if (node) {
-          const roomName = node.props?.roomName || id;
+          const roomName = toAscii(node.props?.roomName || id);
           label = node.type === 'radiator' ? `Radiator: ${roomName}`
             : node.type === 'pump' ? 'Pump'
             : node.type === 'tee' ? 'Tee' : 'Elbow 90';
@@ -386,18 +423,20 @@ export default function ResultsDialog({ open, onClose, results, pumpHead, pumpFl
       // Трубы
       pipeSpec.forEach(({ size, len }) => {
         if (y > H_PAGE - 16) { doc.addPage(); y = 14; }
-        y = tableRow(doc, size, `${len.toFixed(1)} m`, y, W, font, [71, 85, 105], [30, 41, 59]);
+        y = tableRow(doc, toAscii(size), `${len.toFixed(1)} m`, y, W, font, [71, 85, 105], [30, 41, 59]);
       });
 
       // Фитинги и оборудование
       specification.forEach(item => {
         if (item.qty <= 0) return;
         if (y > H_PAGE - 16) { doc.addPage(); y = 14; }
-        const nameLines = doc.splitTextToSize(item.name, W - MARGIN * 2 - 50);
+        const name = toAscii(item.name);
+        const unit = toAscii(item.unit);
+        const nameLines = doc.splitTextToSize(name, W - MARGIN * 2 - 50);
         doc.setFont(font, 'normal'); doc.setFontSize(9); doc.setTextColor(71, 85, 105);
         doc.text(nameLines, 18, y);
         doc.setFont(font, 'bold'); doc.setTextColor(30, 41, 59);
-        doc.text(`${item.qty} ${item.unit}`, W - MARGIN, y, { align: 'right' });
+        doc.text(`${item.qty} ${unit}`, W - MARGIN, y, { align: 'right' });
         y += 5.5 * nameLines.length;
       });
 
@@ -410,7 +449,7 @@ export default function ResultsDialog({ open, onClose, results, pumpHead, pumpFl
         doc.setFont(font, 'bold'); doc.setFontSize(11); doc.setTextColor(59, 130, 246);
         doc.text(recommended.model, 18, y); y += 6;
         doc.setFont(font, 'normal'); doc.setFontSize(9); doc.setTextColor(71, 85, 105);
-        doc.text(recommended.desc, 18, y); y += 5;
+        doc.text(toAscii(recommended.desc), 18, y); y += 5;
         doc.text(`Max head: ${recommended.H_max} m  |  Max flow: ${recommended.Q_max} l/min`, 18, y); y += 5;
         doc.text(`Required (x1.2): H >= ${(H * 1.2).toFixed(1)} m, Q >= ${(Q * 1.2).toFixed(1)} l/min`, 18, y); y += 5;
         doc.setTextColor(59, 130, 246);
