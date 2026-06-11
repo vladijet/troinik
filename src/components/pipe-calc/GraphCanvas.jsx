@@ -4,7 +4,7 @@
  * Снэппинг порта при перетаскивании узла.
  * Клик по ребру → выбор трубы.
  */
-import { useRef, useState, useCallback } from 'react';
+import { useRef, useState, useCallback, forwardRef, useImperativeHandle } from 'react';
 import { getPortAbsPos, NODE_PORT_CONFIG, NODE_SIZE } from '@/lib/hydraulicGraph';
 
 const BG    = '#0f172a';
@@ -221,11 +221,13 @@ function buildEdgeNumbers(nodes, edges) {
 }
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
-export default function GraphCanvas({
+const GraphCanvas = forwardRef(function GraphCanvas({
   nodes, edges, selectedId, results, openPorts, cappedPorts, inPorts,
   onNodeMove, onNodeClick, onPortClick, onRotate, onEdgeClick, onDropElement,
-}) {
+}, ref) {
   const svgRef = useRef(null);
+  useImperativeHandle(ref, () => svgRef.current, []);
+
   const [vp, setVp]   = useState({ x: 160, y: 200, scale: 1 });
   const [drag, setDrag] = useState(null);
   const [pan,  setPan]  = useState(null);
@@ -252,13 +254,11 @@ export default function GraphCanvas({
 
   const handleWheel = useCallback((e) => {
     e.preventDefault();
-    // Трекпад: если ctrlKey — зум, иначе — панорамирование
     if (e.ctrlKey || e.metaKey) {
       const { x, y } = getSVG(e);
       const s = Math.max(0.2, Math.min(4, vp.scale * (e.deltaY > 0 ? 0.9 : 1.1)));
       setVp(v => ({ x: x - (x - v.x) * (s / v.scale), y: y - (y - v.y) * (s / v.scale), scale: s }));
     } else {
-      // Два пальца на трекпаде → панорамирование
       setVp(v => ({ ...v, x: v.x - e.deltaX, y: v.y - e.deltaY }));
     }
   }, [vp]);
@@ -281,7 +281,6 @@ export default function GraphCanvas({
     let nx = snapGrid(cp.x - drag.ox);
     let ny = snapGrid(cp.y - drag.oy);
 
-    // Снэппинг: ищем ближайший свободный порт другого узла
     const movingNode = { ...nodeMap[drag.id], x: nx, y: ny };
     const movingConfig = NODE_PORT_CONFIG[movingNode.type];
     if (movingConfig) {
@@ -319,7 +318,6 @@ export default function GraphCanvas({
     setDrag({ id, ox: cp.x - n.x, oy: cp.y - n.y });
   }, [nodes, vp]);
 
-  // Сетка
   const gs = SNAP * vp.scale;
   const gox = ((vp.x % gs) + gs) % gs;
   const goy = ((vp.y % gs) + gs) % gs;
@@ -368,7 +366,6 @@ export default function GraphCanvas({
       <rect width="100%" height="100%" fill="url(#dotGrid)" />
 
       <g transform={`translate(${vp.x},${vp.y}) scale(${vp.scale})`}>
-        {/* Рёбра (двухтрубные магистрали) */}
         {edges.map(edge => {
           const from = nodeMap[edge.fromNodeId];
           const to   = nodeMap[edge.toNodeId];
@@ -377,26 +374,21 @@ export default function GraphCanvas({
           const mid = pathMidpoint(from, edge.fromPortId, to, edge.toPortId);
           const res = results?.[edge.id];
           const isSel = selectedId === edge.id;
-          const supplyColor = isSel ? '#fca5a5' : '#ef4444'; // подача — красная
-          const returnColor = isSel ? '#60a5fa' : '#3b82f6'; // обратка — синяя
+          const supplyColor = isSel ? '#fca5a5' : '#ef4444';
+          const returnColor = isSel ? '#60a5fa' : '#3b82f6';
 
           return (
             <g key={edge.id} onClick={e => { e.stopPropagation(); onEdgeClick(edge.id); }}
               style={{ cursor: 'pointer' }}>
-              {/* hit zone */}
               <path d={d} stroke="transparent" strokeWidth={20} fill="none" />
-              {/* Тень */}
               <path d={d} stroke="#000" strokeWidth={7} fill="none" strokeLinecap="round" opacity={0.2} />
-              {/* Обратка (синяя) — смещена чуть вниз/вправо, сплошная */}
               <path d={d} stroke={returnColor} strokeWidth={isSel ? 2.5 : 1.8}
                 fill="none" strokeLinecap="round"
                 style={{ transform: 'translate(2px, 2px)' }}
                 markerEnd="url(#arr-ret)" />
-              {/* Подача (красная) — поверх, сплошная */}
               <path d={d} stroke={supplyColor} strokeWidth={isSel ? 2.5 : 1.8}
                 fill="none" strokeLinecap="round"
                 markerEnd="url(#arr)" />
-              {/* Выделение */}
               {isSel && <path d={d} stroke="#ffffff" strokeWidth={5} fill="none" strokeLinecap="round" opacity={0.08} />}
 
               {mid && (
@@ -422,7 +414,6 @@ export default function GraphCanvas({
           );
         })}
 
-        {/* Узлы */}
         {nodes.map(node => (
           <GraphNode key={node.id}
             node={node}
@@ -449,4 +440,6 @@ export default function GraphCanvas({
       </g>
     </svg>
   );
-}
+});
+
+export default GraphCanvas;

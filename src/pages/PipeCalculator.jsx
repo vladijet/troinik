@@ -3,7 +3,7 @@
  * Модель: nodes (компоненты) + edges (трубы-рёбра)
  * Труба создаётся при соединении двух портов через клик
  */
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 import { Play, BarChart2, Flame, RotateCcw, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -38,6 +38,7 @@ function loadSavedGraph() {
 }
 
 export default function PipeCalculator() {
+  const canvasRef = useRef(null);
   const saved = loadSavedGraph();
   const [nodes,      setNodes]      = useState(saved?.nodes || [PUMP_NODE]);
   const [edges,      setEdges]      = useState(saved?.edges || []);
@@ -367,6 +368,7 @@ export default function PipeCalculator() {
         nodes={nodes}
         edges={edges}
         globalParams={globalParams}
+        canvasRef={canvasRef}
       />
 
       <div className="flex flex-1 overflow-hidden">
@@ -376,6 +378,7 @@ export default function PipeCalculator() {
           onKeyDown={e => { if (e.key === 'Escape') setPendingPort(null); }}
           tabIndex={0}>
           <GraphCanvas
+            ref={canvasRef}
             onDropElement={(type, x, y) => {
               const n = createNode(type, x, y);
               setNodes(prev => [...prev, n]);
