@@ -93,9 +93,11 @@ function localDrop(zeta, v) {
 /**
  * BFS: находит кратчайший путь от startId до targetId,
  * проходя ТОЛЬКО по рёбрам из разрешённого множества allowedEdgeIds.
+ * blockedNodes — множество nodeId, через которые нельзя проходить транзитом
+ * (используется чтобы не "проходить" через чужие радиаторы).
  * Возвращает массив [{edgeId, fromNodeId, toNodeId}] или null.
  */
-function bfsPath(startId, targetId, adjUndirected, allowedEdgeIds = null) {
+function bfsPath(startId, targetId, adjUndirected, allowedEdgeIds = null, blockedNodes = null) {
   if (startId === targetId) return [];
   const prev = new Map();
   const visited = new Set([startId]);
@@ -104,9 +106,11 @@ function bfsPath(startId, targetId, adjUndirected, allowedEdgeIds = null) {
   while (queue.length > 0) {
     const cur = queue.shift();
     for (const lnk of adjUndirected[cur] || []) {
-      // Если задан фильтр по рёбрам — пропускаем "запрещённые"
       if (allowedEdgeIds && !allowedEdgeIds.has(lnk.edgeId)) continue;
       if (visited.has(lnk.nodeId)) continue;
+      // Нельзя проходить транзитом через "заблокированный" узел,
+      // но сам целевой узел — всегда разрешён
+      if (blockedNodes && blockedNodes.has(lnk.nodeId) && lnk.nodeId !== targetId) continue;
       visited.add(lnk.nodeId);
       prev.set(lnk.nodeId, { edgeId: lnk.edgeId, fromNodeId: cur });
       if (lnk.nodeId === targetId) {
@@ -126,14 +130,21 @@ function bfsPath(startId, targetId, adjUndirected, allowedEdgeIds = null) {
 }
 
 /**
- * Строим edgeFlow по трубам подачи: для каждого ребра — суммарный расход
- * радиаторов, чьи пути проходят через это ребро.
- * allowedEdgeIds — множество id рёбер, по которым разрешено идти (подача или обратка).
+ * Строим edgeFlow: для каждого ребра — суммарный расход радиаторов,
+ * чьи пути проходят через это ребро.
+ * Ключевое: BFS запрещает проходить транзитом через чужие радиаторы,
+ * чтобы подводка к одному радиатору не накапливала расход другого.
  */
 function buildEdgeFlows(pumpId, radiators, radFlow, adjUndirected, allowedEdgeIds) {
   const edgeFlow = {};
+  // Множество всех радиаторов — транзит через них запрещён
+  const radiatorIds = new Set(radiators.map(r => r.id));
+
   for (const rad of radiators) {
-    const path = bfsPath(pumpId, rad.id, adjUndirected, allowedEdgeIds);
+    // Для пути до этого радиатора — блокируем все остальные радиаторы
+    const blocked = new Set(radiatorIds);
+    blocked.delete(rad.id); // целевой разрешён
+    const path = bfsPath(pumpId, rad.id, adjUndirected, allowedEdgeIds, blocked);
     if (!path) continue;
     const q = radFlow[rad.id] || 0;
     for (const seg of path) {
@@ -145,14 +156,20 @@ function buildEdgeFlows(pumpId, radiators, radFlow, adjUndirected, allowedEdgeId
 
 /**
  * Строим nodeFlow: для каждого узла — суммарный расход всех радиаторов,
- * чьи пути (подача + обратка) проходят через этот узел.
+ * чьи пути проходят через этот узел.
+ * Аналогично запрещаем транзит через чужие радиаторы.
  */
 function buildNodeFlows(pumpId, radiators, radFlow, adjUndirected, supplyEdgeIds, returnEdgeIds) {
   const nodeFlow = {};
+  const radiatorIds = new Set(radiators.map(r => r.id));
+
   for (const rad of radiators) {
     const q = radFlow[rad.id] || 0;
+    const blocked = new Set(radiatorIds);
+    blocked.delete(rad.id);
+
     // Путь подачи: от насоса до радиатора
-    const supplyPath = bfsPath(pumpId, rad.id, adjUndirected, supplyEdgeIds);
+    const supplyPath = bfsPath(pumpId, rad.id, adjUndirected, supplyEdgeIds, blocked);
     if (supplyPath) {
       for (const seg of supplyPath) {
         nodeFlow[seg.fromNodeId] = (nodeFlow[seg.fromNodeId] || 0) + q;
@@ -160,7 +177,7 @@ function buildNodeFlows(pumpId, radiators, radFlow, adjUndirected, supplyEdgeIds
       }
     }
     // Путь обратки: от радиатора обратно до насоса
-    const returnPath = bfsPath(rad.id, pumpId, adjUndirected, returnEdgeIds);
+    const returnPath = bfsPath(rad.id, pumpId, adjUndirected, returnEdgeIds, blocked);
     if (returnPath) {
       for (const seg of returnPath) {
         nodeFlow[seg.fromNodeId] = (nodeFlow[seg.fromNodeId] || 0) + q;
@@ -287,8 +304,11 @@ export function calcHydraulicGraph(nodes, edges, globalParams) {
 
   // ── 7. Критический путь ────────────────────────────────────────────────────
   // ΔP_ветки = сумма потерь рёбер (уже × 2) + фитингов + радиатора
+  const radiatorIdsSet = new Set(radiators.map(r => r.id));
   function calcBranchDp(radId) {
-    const path = bfsPath(pump.id, radId, adjUndirected, null);
+    const blocked = new Set(radiatorIdsSet);
+    blocked.delete(radId);
+    const path = bfsPath(pump.id, radId, adjUndirected, null, blocked);
     if (!path) return 0;
     let dp = 0;
     for (const seg of path) {
