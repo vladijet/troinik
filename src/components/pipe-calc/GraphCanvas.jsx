@@ -27,12 +27,21 @@ function edgePath(fromNode, fromPortId, toNode, toPortId) {
   return `M${a.x},${a.y} C${a.x+c1x},${a.y+c1y} ${b.x+c2x},${b.y+c2y} ${b.x},${b.y}`;
 }
 
-// Середина пути (для метки)
-function pathMidpoint(fromNode, fromPortId, toNode, toPortId) {
+// Середина пути + вектор нормали (для выноски)
+function pathMidpointWithNormal(fromNode, fromPortId, toNode, toPortId) {
   const a = getPortAbsPos(fromNode, fromPortId);
   const b = getPortAbsPos(toNode, toPortId);
   if (!a || !b) return null;
-  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+  const mx = (a.x + b.x) / 2;
+  const my = (a.y + b.y) / 2;
+  // Нормаль к вектору трубы (перпендикуляр)
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const len = Math.hypot(dx, dy) || 1;
+  // Нормализованный перпендикуляр
+  const nx = -dy / len;
+  const ny =  dx / len;
+  return { mx, my, nx, ny };
 }
 
 // ─── Символы узлов ────────────────────────────────────────────────────────────
@@ -371,11 +380,27 @@ const GraphCanvas = forwardRef(function GraphCanvas({
           const to   = nodeMap[edge.toNodeId];
           if (!from || !to) return null;
           const d   = edgePath(from, edge.fromPortId, to, edge.toPortId);
-          const mid = pathMidpoint(from, edge.fromPortId, to, edge.toPortId);
+          const midN = pathMidpointWithNormal(from, edge.fromPortId, to, edge.toPortId);
           const res = results?.[edge.id];
           const isSel = selectedId === edge.id;
           const supplyColor = isSel ? '#fca5a5' : '#ef4444';
           const returnColor = isSel ? '#60a5fa' : '#3b82f6';
+          const length = edge.pipeProps?.length;
+          const labelNum = edgeNumbers[edge.id] ?? '?';
+
+          // Вычисляем позицию чипсины: смещаем на 50px по нормали
+          let labelX = 0, labelY = 0, leaderX = 0, leaderY = 0;
+          if (midN) {
+            const OFFSET = 52;
+            labelX = midN.mx + midN.nx * OFFSET;
+            labelY = midN.my + midN.ny * OFFSET;
+            leaderX = midN.mx;
+            leaderY = midN.my;
+          }
+
+          // Ширина чипсины зависит от наличия результатов
+          const chipW = res ? 196 : 100;
+          const chipH = res ? 42 : 22;
 
           return (
             <g key={edge.id} onClick={e => { e.stopPropagation(); onEdgeClick(edge.id); }}
@@ -391,23 +416,52 @@ const GraphCanvas = forwardRef(function GraphCanvas({
                 markerEnd="url(#arr)" />
               {isSel && <path d={d} stroke="#ffffff" strokeWidth={5} fill="none" strokeLinecap="round" opacity={0.08} />}
 
-              {mid && (
-                <g style={{ pointerEvents: 'none' }} transform={`translate(${mid.x + 12}, ${mid.y - 22})`}>
-                  <rect x={-2} y={-8} width={res ? 190 : 80} height={res ? 36 : 16}
-                    rx={3} fill="#0f172a" opacity={0.82} />
-                  <text x={0} y={0} fontSize={7} fontWeight="700" fill={isSel ? '#e2e8f0' : '#64748b'}>
-                    {`Труба - ${edgeNumbers[edge.id] ?? '?'}`}
-                  </text>
-                  <text x={0} y={10} fontSize={7} fill={isSel ? '#93c5fd' : '#475569'}>
-                    {res
-                      ? `Ø${res.size?.outer}×${res.size?.wall} · ${res.velocity?.toFixed(2)}м/с`
-                      : `L=${edge.pipeProps?.length || '?'}м (×2)`}
-                  </text>
-                  {res && (
-                    <text x={0} y={20} fontSize={7} fill="#34d399">
-                      Q={res.flowRate?.toFixed(2)} л/мин ({(res.flowRate * 0.06).toFixed(3)} м³/ч) · ΔP={res.pressureLoss?.toFixed(0)} Па
+              {midN && (
+                <g style={{ pointerEvents: 'none' }}>
+                  {/* Линия-выноска от середины трубы до чипсины */}
+                  <line
+                    x1={leaderX} y1={leaderY}
+                    x2={labelX} y2={labelY}
+                    stroke={isSel ? '#93c5fd' : '#334155'}
+                    strokeWidth={1}
+                    strokeDasharray="3 2"
+                  />
+                  {/* Точка привязки на трубе */}
+                  <circle cx={leaderX} cy={leaderY} r={2.5} fill={isSel ? '#93c5fd' : '#475569'} />
+                  {/* Чипсина */}
+                  <g transform={`translate(${labelX - chipW / 2}, ${labelY - chipH / 2})`}>
+                    {/* Тень */}
+                    <rect x={1} y={1} width={chipW} height={chipH} rx={5}
+                      fill="#000" opacity={0.35} />
+                    {/* Фон чипсины */}
+                    <rect width={chipW} height={chipH} rx={5}
+                      fill={isSel ? '#1e3a5f' : '#0f1f35'}
+                      stroke={isSel ? '#3b82f6' : '#1e3a5f'}
+                      strokeWidth={isSel ? 1.2 : 0.8} />
+                    {/* Цветная полоска слева */}
+                    <rect width={3} height={chipH} rx={2}
+                      fill={isSel ? '#3b82f6' : '#334155'} />
+                    {/* Заголовок: «Труба-N · L м.» */}
+                    <text x={9} y={11} fontSize={7.5} fontWeight="700"
+                      fill={isSel ? '#e2e8f0' : '#94a3b8'}>
+                      {`Труба-${labelNum}`}
+                      <tspan fill={isSel ? '#93c5fd' : '#3b82f6'} fontWeight="400">
+                        {length ? ` · ${length} м.` : ''}
+                      </tspan>
                     </text>
-                  )}
+                    {/* Строка 2: диаметр и скорость */}
+                    <text x={9} y={22} fontSize={7} fill={isSel ? '#93c5fd' : '#475569'}>
+                      {res
+                        ? `Ø${res.size?.outer}×${res.size?.wall} · ${res.velocity?.toFixed(2)} м/с`
+                        : `L=${length || '?'} м (×2)`}
+                    </text>
+                    {/* Строка 3: расход и ΔP */}
+                    {res && (
+                      <text x={9} y={33} fontSize={7} fill="#34d399">
+                        {`Q=${res.flowRate?.toFixed(2)} л/мин · ΔP=${res.pressureLoss?.toFixed(0)} Па`}
+                      </text>
+                    )}
+                  </g>
                 </g>
               )}
             </g>
