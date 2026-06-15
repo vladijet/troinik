@@ -90,69 +90,42 @@ function localDrop(zeta, v) {
   return zeta * WATER.density * v * v / 2;
 }
 
-/**
- * BFS: находит кратчайший путь от startId до targetId,
- * проходя ТОЛЬКО по рёбрам из разрешённого множества allowedEdgeIds.
- * blockedNodes — множество nodeId, через которые нельзя проходить транзитом
- * (используется чтобы не "проходить" через чужие радиаторы).
- * Возвращает массив [{edgeId, fromNodeId, toNodeId}] или null.
- */
-function bfsPath(startId, targetId, adjUndirected, allowedEdgeIds = null, blockedNodes = null) {
-  if (startId === targetId) return [];
-  const prev = new Map();
-  const visited = new Set([startId]);
-  const queue = [startId];
-
-  while (queue.length > 0) {
-    const cur = queue.shift();
-    for (const lnk of adjUndirected[cur] || []) {
-      if (allowedEdgeIds && !allowedEdgeIds.has(lnk.edgeId)) continue;
-      if (visited.has(lnk.nodeId)) continue;
-      // Нельзя проходить транзитом через "заблокированный" узел,
-      // но сам целевой узел — всегда разрешён
-      if (blockedNodes && blockedNodes.has(lnk.nodeId) && lnk.nodeId !== targetId) continue;
-      visited.add(lnk.nodeId);
-      prev.set(lnk.nodeId, { edgeId: lnk.edgeId, fromNodeId: cur });
-      if (lnk.nodeId === targetId) {
-        const path = [];
-        let node = targetId;
-        while (prev.has(node)) {
-          const { edgeId, fromNodeId } = prev.get(node);
-          path.unshift({ edgeId, fromNodeId, toNodeId: node });
-          node = fromNodeId;
-        }
-        return path;
-      }
-      queue.push(lnk.nodeId);
-    }
-  }
-  return null;
-}
 
 /**
- * Строим направленное дерево потока от насоса обходом в ширину.
+ * Строим направленное дерево потока от насоса, используя НАПРАВЛЕНИЕ рёбер (fromNodeId → toNodeId).
+ * Дополнительно строим обратный индекс: для каждого узла — список рёбер, где он является «источником».
+ *
+ * edges — массив рёбер графа (каждое ребро имеет fromNodeId и toNodeId).
  * Возвращает:
- *   - children: Map<nodeId, [{edgeId, childId}]>  — дочерние узлы (по направлению потока)
- *   - edgeDirection: Map<edgeId, {from, to}>       — направленность каждого ребра
+ *   - children: Map<nodeId, [{edgeId, childId}]>  — дочерние узлы по направлению потока
  */
-function buildFlowTree(pumpId, adjUndirected) {
+function buildFlowTree(pumpId, edges) {
+  // Строим индекс: nodeId → [{edgeId, toNodeId}] — исходящие рёбра
+  const outEdges = {};
+  edges.forEach(e => {
+    if (!outEdges[e.fromNodeId]) outEdges[e.fromNodeId] = [];
+    outEdges[e.fromNodeId].push({ edgeId: e.id, toNodeId: e.toNodeId });
+    // Для "обратного" направления (если пользователь нарисовал ребро "наоборот")
+    // добавляем и обратную связь, но только если она не создаёт петлю
+    if (!outEdges[e.toNodeId]) outEdges[e.toNodeId] = [];
+    outEdges[e.toNodeId].push({ edgeId: e.id, toNodeId: e.fromNodeId });
+  });
+
   const children = new Map();
-  const edgeDirection = new Map();
   const visited = new Set([pumpId]);
   const queue = [pumpId];
 
   while (queue.length > 0) {
     const cur = queue.shift();
     if (!children.has(cur)) children.set(cur, []);
-    for (const lnk of adjUndirected[cur] || []) {
-      if (visited.has(lnk.nodeId)) continue;
-      visited.add(lnk.nodeId);
-      children.get(cur).push({ edgeId: lnk.edgeId, childId: lnk.nodeId });
-      edgeDirection.set(lnk.edgeId, { from: cur, to: lnk.nodeId });
-      queue.push(lnk.nodeId);
+    for (const lnk of outEdges[cur] || []) {
+      if (visited.has(lnk.toNodeId)) continue;
+      visited.add(lnk.toNodeId);
+      children.get(cur).push({ edgeId: lnk.edgeId, childId: lnk.toNodeId });
+      queue.push(lnk.toNodeId);
     }
   }
-  return { children, edgeDirection };
+  return { children };
 }
 
 /**
@@ -190,15 +163,15 @@ function buildFlowsFromTree(pumpId, children, radFlow, radiatorIds) {
 }
 
 // Обёртки для обратной совместимости с остальным кодом
-function buildEdgeFlows(pumpId, radiators, radFlow, adjUndirected) {
-  const { children } = buildFlowTree(pumpId, adjUndirected);
+function buildEdgeFlows(pumpId, radiators, radFlow, edges) {
+  const { children } = buildFlowTree(pumpId, edges);
   const radiatorIds = new Set(radiators.map(r => r.id));
   const { edgeFlow } = buildFlowsFromTree(pumpId, children, radFlow, radiatorIds);
   return edgeFlow;
 }
 
-function buildNodeFlows(pumpId, radiators, radFlow, adjUndirected) {
-  const { children } = buildFlowTree(pumpId, adjUndirected);
+function buildNodeFlows(pumpId, radiators, radFlow, edges) {
+  const { children } = buildFlowTree(pumpId, edges);
   const radiatorIds = new Set(radiators.map(r => r.id));
   const { nodeFlow } = buildFlowsFromTree(pumpId, children, radFlow, radiatorIds);
   return nodeFlow;
@@ -235,29 +208,20 @@ export function calcHydraulicGraph(nodes, edges, globalParams) {
     if (!l || l <= 0) return { error: `Труба ${e.id}: укажите длину` };
   }
 
-  // ── 3. Ненаправленный граф ─────────────────────────────────────────────────
-  const adjUndirected = {};
-  nodes.forEach(n => { adjUndirected[n.id] = []; });
-  edges.forEach(e => {
-    adjUndirected[e.fromNodeId]?.push({ edgeId: e.id, nodeId: e.toNodeId });
-    adjUndirected[e.toNodeId]?.push({ edgeId: e.id, nodeId: e.fromNodeId });
-  });
+  // ── 3. Расходы по рёбрам и узлам ──────────────────────────────────────────
+  // Используем направленное дерево от насоса — строго по направлению рёбер.
+  const edgeFlow = buildEdgeFlows(pump.id, radiators, radFlow, edges);
+  const nodeFlow = buildNodeFlows(pump.id, radiators, radFlow, edges);
 
-  // ── 4. Расходы по рёбрам и узлам ──────────────────────────────────────────
-  // Используем направленное дерево от насоса — физически точный подход.
-  const edgeFlow = buildEdgeFlows(pump.id, radiators, radFlow, adjUndirected);
-  const nodeFlow = buildNodeFlows(pump.id, radiators, radFlow, adjUndirected);
-
+  // Защита: если ребро не попало в дерево (изолированное) — минимальный расход
   edges.forEach(e => {
     if (!edgeFlow[e.id]) {
-      const flowA = nodeFlow[e.fromNodeId] || 0;
-      const flowB = nodeFlow[e.toNodeId]   || 0;
-      edgeFlow[e.id] = Math.max(flowA, flowB, MIN_FLOW_LPM);
+      edgeFlow[e.id] = MIN_FLOW_LPM;
     }
   });
 
-  console.log('[HydroCalc v7] edgeFlow:', JSON.stringify(edgeFlow));
-  console.log('[HydroCalc v7] nodeFlow:', JSON.stringify(nodeFlow));
+  console.log('[HydroCalc v8] edgeFlow:', JSON.stringify(edgeFlow));
+  console.log('[HydroCalc v8] nodeFlow:', JSON.stringify(nodeFlow));
 
   // ── 5. Расчёт диаметров и потерь ──────────────────────────────────────────
   // КЛЮЧЕВОЕ ИЗМЕНЕНИЕ: длина ребра × 2, т.к. каждое ребро = подача + обратка.
@@ -321,7 +285,7 @@ export function calcHydraulicGraph(nodes, edges, globalParams) {
   // ── 7. Критический путь ────────────────────────────────────────────────────
   // ΔP_ветки = сумма потерь рёбер (уже × 2) + фитингов + радиатора
   // Строим дерево для обхода пути от насоса до каждого радиатора
-  const { children: flowChildren } = buildFlowTree(pump.id, adjUndirected);
+  const { children: flowChildren } = buildFlowTree(pump.id, edges);
 
   // Собираем путь от насоса до radId по дереву (directed DFS)
   function getPathInTree(targetId) {
@@ -368,7 +332,7 @@ export function calcHydraulicGraph(nodes, edges, globalParams) {
   if (maxDp > MAX_DP_SYSTEM && criticalRadId) {
     warnings.push(`Сопротивление критической ветки ${(maxDp/1000).toFixed(1)} кПа > 30 кПа. Выполняется автокоррекция.`);
 
-    const critPath = bfsPath(pump.id, criticalRadId, adjUndirected, null);
+    const critPath = getPathInTree(criticalRadId);
     const forceMinInnerByEdge = {};
     const spec = PIPE_TYPES[pipeType];
 
