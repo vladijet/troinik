@@ -339,6 +339,7 @@ const GraphCanvas = forwardRef(function GraphCanvas({
     if (e.target === svgRef.current || e.target.closest('.cbg')) {
       setPan({ sx: x - vp.x, sy: y - vp.y });
       onNodeClick(null);
+      setExpandedEdges(new Set()); // закрываем раскрытую чипсину при клике на фон
     }
   }, [vp, onNodeClick]);
 
@@ -499,7 +500,12 @@ const GraphCanvas = forwardRef(function GraphCanvas({
                 res={res}
                 labelNum={labelNum}
                 expanded={isExp}
-                onToggle={() => toggleEdgeExpand(edge.id)}
+                onToggle={() => {
+                  const wasExp = expandedEdges.has(edge.id);
+                  // закрываем все, открываем только эту (или закрываем если уже открыта)
+                  setExpandedEdges(wasExp ? new Set() : new Set([edge.id]));
+                  if (!wasExp) onEdgeClick(edge.id);
+                }}
               />
             </g>
           );
