@@ -244,12 +244,9 @@ export default function PipeCalculator() {
         style={{ background: '#0f172a', borderBottom: '1px solid #1e3a5f' }}>
 
         <div className="flex items-center gap-2 shrink-0">
-          <div className="p-1.5 rounded-lg" style={{ background: '#1e3a5f' }}>
-            <Flame className="w-4 h-4" style={{ color: '#3b82f6' }} />
-          </div>
-          <div>
-            <div className="text-sm font-bold leading-none" style={{ color: '#e2e8f0' }}>HydroCalc</div>
-            <div className="text-[10px]" style={{ color: '#334155' }}>Топологическая гидравлическая модель</div>
+          <div className="flex flex-col gap-0.5">
+            <img src="https://media.base44.com/images/public/6a2273e3e4eb03727e3a6619/ed72c63ff_logoTroinik.png" alt="Troinik" className="h-6 object-contain" />
+            <div className="text-[10px]" style={{ color: '#ffffff' }}>Топологическая гидравлическая модель</div>
           </div>
         </div>
 
