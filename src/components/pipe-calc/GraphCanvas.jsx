@@ -399,8 +399,8 @@ const GraphCanvas = forwardRef(function GraphCanvas({
           }
 
           // Ширина чипсины зависит от наличия результатов
-          const chipW = res ? 196 : 100;
-          const chipH = res ? 42 : 22;
+          const chipW = res ? 200 : 100;
+          const chipH = res ? 52 : 22;
 
           return (
             <g key={edge.id} onClick={e => { e.stopPropagation(); onEdgeClick(edge.id); }}
@@ -441,7 +441,7 @@ const GraphCanvas = forwardRef(function GraphCanvas({
                     {/* Цветная полоска слева */}
                     <rect width={3} height={chipH} rx={2}
                       fill={isSel ? '#3b82f6' : '#334155'} />
-                    {/* Заголовок: «Труба-N · L м.» */}
+                    {/* Строка 1: Название + длина */}
                     <text x={9} y={11} fontSize={7.5} fontWeight="700"
                       fill={isSel ? '#e2e8f0' : '#94a3b8'}>
                       {`Труба-${labelNum}`}
@@ -449,16 +449,22 @@ const GraphCanvas = forwardRef(function GraphCanvas({
                         {length ? ` · ${length} м.` : ''}
                       </tspan>
                     </text>
-                    {/* Строка 2: диаметр и скорость */}
+                    {/* Строка 2: диаметр */}
                     <text x={9} y={22} fontSize={7} fill={isSel ? '#93c5fd' : '#475569'}>
-                      {res
-                        ? `Ø${res.size?.outer}×${res.size?.wall} · ${res.velocity?.toFixed(2)} м/с`
+                      {res?.size
+                        ? `Ø${res.size.outer}×${res.size.wall} мм`
                         : `L=${length || '?'} м (×2)`}
                     </text>
-                    {/* Строка 3: расход и ΔP */}
+                    {/* Строка 3: расход */}
                     {res && (
                       <text x={9} y={33} fontSize={7} fill="#34d399">
-                        {`Q=${res.flowRate?.toFixed(2)} л/мин · ΔP=${res.pressureLoss?.toFixed(0)} Па`}
+                        {`Q=${res.flowRate?.toFixed(2)} л/мин · ${(res.flowRate * 0.06).toFixed(3)} м³/ч`}
+                      </text>
+                    )}
+                    {/* Строка 4: скорость + ΔP */}
+                    {res && (
+                      <text x={9} y={44} fontSize={7} fill="#fbbf24">
+                        {`v=${res.velocity?.toFixed(3)} м/с · ΔP=${res.pressureLoss?.toFixed(0)} Па`}
                       </text>
                     )}
                   </g>
