@@ -23,6 +23,9 @@ import {
 import { calcHydraulicGraph } from '@/lib/hydraulicCalcEngine';
 import { PIPE_TYPES } from '@/lib/pipeStandards';
 import ResultsDialog from '@/components/pipe-calc/ResultsDialog';
+import ResetConfirmDialog from '@/components/pipe-calc/ResetConfirmDialog';
+
+const DEFAULT_PARAMS = { pipeType: 'ppr_pn20', tSupply: 75, tReturn: 60, tAir: 22 };
 
 // Начальное состояние: один насос в центре
 const PUMP_NODE = { id: 'pump-0', type: 'pump', x: 200, y: 300, rotation: 0, props: {} };
@@ -54,8 +57,9 @@ export default function PipeCalculator() {
   const [cappedPorts, setCappedPorts] = useState(new Set()); // заглушённые порты "nodeId:portId"
 
   const [globalParams, setGlobalParams] = useState(
-    saved?.globalParams || { pipeType: 'ppr_pn20', tSupply: 75, tReturn: 60, tAir: 22 }
+    saved?.globalParams || DEFAULT_PARAMS
   );
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   // Автосохранение при каждом изменении графа
   useEffect(() => {
@@ -193,8 +197,7 @@ export default function PipeCalculator() {
   }, []);
 
   // ─── Сброс ──────────────────────────────────────────────────────────────
-  const handleReset = useCallback(() => {
-    if (!confirm('Очистить всю схему?')) return;
+  const handleResetConfirm = useCallback(() => {
     resetUid();
     setNodes([{ ...PUMP_NODE }]);
     setEdges([]);
@@ -203,6 +206,12 @@ export default function PipeCalculator() {
     setResults(null);
     setValidation(null);
     setCappedPorts(new Set());
+    setGlobalParams(DEFAULT_PARAMS);
+    setShowResetConfirm(false);
+  }, []);
+
+  const handleReset = useCallback(() => {
+    setShowResetConfirm(true);
   }, []);
 
   // ─── Расчёт ─────────────────────────────────────────────────────────────
@@ -355,6 +364,12 @@ export default function PipeCalculator() {
           </span>
         </div>
       )}
+
+      <ResetConfirmDialog
+        open={showResetConfirm}
+        onConfirm={handleResetConfirm}
+        onCancel={() => setShowResetConfirm(false)}
+      />
 
       <ResultsDialog
         open={showResults}
