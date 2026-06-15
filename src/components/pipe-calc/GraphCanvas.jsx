@@ -57,8 +57,7 @@ function EdgeChip({ edge, res, labelNum, expanded, onToggle }) {
         fill={expanded ? 'rgba(15,31,56,0.92)' : 'rgba(15,25,48,0.82)'}
         stroke={expanded ? '#3b82f6' : '#253a5e'}
         strokeWidth={expanded ? 1.2 : 0.8} />
-      {/* Левая акцентная полоска */}
-      <rect width={2.5} height={h} rx={1.5} fill={expanded ? '#3b82f6' : '#2563eb'} />
+
 
       {/* Компактный режим — одна строка */}
       {!expanded && (
@@ -66,7 +65,7 @@ function EdgeChip({ edge, res, labelNum, expanded, onToggle }) {
           <tspan fontWeight="600" fill="#cbd5e1">{`Труба-${labelNum}`}</tspan>
           {length ? <tspan fill="#3b82f6"> {length}м</tspan> : null}
           {res?.size ? <tspan fill="#64748b">  Ø{res.size.outer}</tspan> : null}
-          {res?.flowRate != null ? <tspan fill="#34d399"> {res.flowRate.toFixed(1)}л/м</tspan> : null}
+          {res?.flowRate != null ? <tspan fill="#34d399"> {res.flowRate}л/м</tspan> : null}
         </text>
       )}
 
