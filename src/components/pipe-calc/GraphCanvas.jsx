@@ -302,6 +302,13 @@ const GraphCanvas = forwardRef(function GraphCanvas({
     });
   }, []);
 
+  // Сворачиваем чипсины при смене выделения на другую сущность
+  useEffect(() => {
+    if (selectedId && !expandedEdges.has(selectedId)) {
+      setExpandedEdges(new Set());
+    }
+  }, [selectedId]);
+
   const nodeMap = Object.fromEntries(nodes.map(n => [n.id, n]));
   const edgeNumbers = buildEdgeNumbers(nodes, edges);
 
