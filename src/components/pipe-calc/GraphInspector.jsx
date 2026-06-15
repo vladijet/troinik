@@ -213,7 +213,7 @@ function NodePanel({ node, res, onUpdate, onDelete, onRotate, deltaT }) {
               <Row label="Расход"  value={res.flowRate?.toFixed(2)} unit="л/мин" />
             </>}
             {node.type === 'radiator' && <>
-              <Row label="Расход"              value={res.flowRate?.toFixed(3)}              unit="л/мин" />
+              <Row label="Расход"              value={`${res.flowRate?.toFixed(3)} л/мин / ${(res.flowRate * 0.06).toFixed(4)} м³/ч`} unit="" />
               <Row label="Диаметр подвода"      value={res.size ? `Ø${res.size.outer}` : '—'} unit="мм" />
               <Row label="ΔP термоклапан"       value={(res.pressureLossValve / 1000)?.toFixed(1)} unit="кПа" color={D.red} />
               <Row label="ΔP арматура"          value={res.pressureLossDynamic?.toFixed(1)}   unit="Па"  color={D.warn} />

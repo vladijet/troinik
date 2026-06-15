@@ -83,7 +83,7 @@ function RadiatorSymbol({ sel, props, res }) {
       {/* Трубка подключения сверху по центру */}
       <line x1={0} y1={-h/2} x2={0} y2={-20} stroke={s} strokeWidth={2} opacity={0.8} />
       {props?.roomName && <text y={-h/2-22} textAnchor="middle" fontSize={9} fill="#94a3b8" fontWeight="600">{props.roomName}</text>}
-      {res?.flowRate != null && <text y={h/2+12} textAnchor="middle" fontSize={7} fill="#34d399">Q={res.flowRate.toFixed(2)} л/мин</text>}
+      {res?.flowRate != null && <text y={h/2+12} textAnchor="middle" fontSize={7} fill="#34d399">Q={res.flowRate.toFixed(2)} л/мин / {(res.flowRate * 0.06).toFixed(3)} м³/ч</text>}
     </g>
   );
 }
@@ -393,7 +393,7 @@ const GraphCanvas = forwardRef(function GraphCanvas({
 
               {mid && (
                 <g style={{ pointerEvents: 'none' }} transform={`translate(${mid.x + 12}, ${mid.y - 22})`}>
-                  <rect x={-2} y={-8} width={res ? 110 : 80} height={res ? 36 : 16}
+                  <rect x={-2} y={-8} width={res ? 190 : 80} height={res ? 36 : 16}
                     rx={3} fill="#0f172a" opacity={0.82} />
                   <text x={0} y={0} fontSize={7} fontWeight="700" fill={isSel ? '#e2e8f0' : '#64748b'}>
                     {`Труба - ${edgeNumbers[edge.id] ?? '?'}`}
@@ -405,7 +405,7 @@ const GraphCanvas = forwardRef(function GraphCanvas({
                   </text>
                   {res && (
                     <text x={0} y={20} fontSize={7} fill="#34d399">
-                      Q={res.flowRate?.toFixed(2)} л/мин · ΔP={res.pressureLoss?.toFixed(0)} Па
+                      Q={res.flowRate?.toFixed(2)} л/мин ({(res.flowRate * 0.06).toFixed(3)} м³/ч) · ΔP={res.pressureLoss?.toFixed(0)} Па
                     </text>
                   )}
                 </g>
