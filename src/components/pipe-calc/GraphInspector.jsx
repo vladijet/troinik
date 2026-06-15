@@ -82,7 +82,7 @@ function EdgePanel({ edge, res, onUpdateEdge, onDeleteEdge }) {
         </p>
       </div>
 
-      <Field label="Длина одной трубы, м">
+      <Field label="Длина трубы в одну сторону">
         <SInput type="number" value={length}
           onChange={e => onUpdateEdge({ length: parseFloat(e.target.value) || '' })}
           step={0.5} min={0.1} placeholder="1.0" />
@@ -160,7 +160,7 @@ function NodePanel({ node, res, onUpdate, onDelete, onRotate, deltaT }) {
             <SInput type="text" value={node.props?.roomName ?? ''}
               onChange={e => onUpdate({ roomName: e.target.value })} placeholder="Гостиная..." />
           </Field>
-          <p style={{ fontSize: 9, color: D.muted, textAlign: 'center' }}>— расход ИЛИ мощность —</p>
+          <p style={{ fontSize: 9, color: D.muted, textAlign: 'center' }}>— Укажите расход или мощность —</p>
           {flowWarn && (
             <div className="flex items-center gap-1" style={{
               fontSize: 10, color: D.warn, background: '#292100',
