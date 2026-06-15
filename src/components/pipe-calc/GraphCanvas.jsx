@@ -4,7 +4,7 @@
  * Снэппинг порта при перетаскивании узла.
  * Клик по ребру → выбор трубы.
  */
-import { useRef, useState, useCallback, forwardRef, useImperativeHandle } from 'react';
+import { useRef, useState, useCallback, forwardRef, useImperativeHandle, useEffect } from 'react';
 import { getPortAbsPos, NODE_PORT_CONFIG, NODE_SIZE } from '@/lib/hydraulicGraph';
 
 const BG    = '#0f172a';
@@ -27,21 +27,83 @@ function edgePath(fromNode, fromPortId, toNode, toPortId) {
   return `M${a.x},${a.y} C${a.x+c1x},${a.y+c1y} ${b.x+c2x},${b.y+c2y} ${b.x},${b.y}`;
 }
 
-// Середина пути + вектор нормали (для выноски)
-function pathMidpointWithNormal(fromNode, fromPortId, toNode, toPortId) {
+// Середина пути
+function pathMidpoint(fromNode, fromPortId, toNode, toPortId) {
   const a = getPortAbsPos(fromNode, fromPortId);
   const b = getPortAbsPos(toNode, toPortId);
   if (!a || !b) return null;
-  const mx = (a.x + b.x) / 2;
-  const my = (a.y + b.y) / 2;
-  // Нормаль к вектору трубы (перпендикуляр)
-  const dx = b.x - a.x;
-  const dy = b.y - a.y;
-  const len = Math.hypot(dx, dy) || 1;
-  // Нормализованный перпендикуляр
-  const nx = -dy / len;
-  const ny =  dx / len;
-  return { mx, my, nx, ny };
+  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+}
+
+// ─── Чипсина трубы ────────────────────────────────────────────────────────────
+// Компактная: название + длина + диаметр + расход
+// Расширенная (expanded): + скорость + ΔP
+function EdgeChip({ edge, res, labelNum, expanded, onToggle }) {
+  const length = edge.pipeProps?.length;
+  const compactW = 130, compactH = 26;
+  const expandedW = 170, expandedH = 60;
+  const w = expanded ? expandedW : compactW;
+  const h = expanded ? expandedH : compactH;
+
+  return (
+    <g transform={`translate(${-w / 2},${-h / 2})`}
+      onClick={e => { e.stopPropagation(); onToggle(); }}
+      style={{ cursor: 'pointer' }}>
+      {/* Тень */}
+      <rect x={1} y={1} width={w} height={h} rx={expanded ? 6 : 11}
+        fill="#000" opacity={0.4} />
+      {/* Фон */}
+      <rect width={w} height={h} rx={expanded ? 6 : 11}
+        fill={expanded ? '#0f1f38' : '#0f1f35'}
+        stroke={expanded ? '#3b82f6' : '#1e3a5f'}
+        strokeWidth={expanded ? 1.5 : 1} />
+      {/* Левая полоска */}
+      <rect width={3} height={h} rx={2} fill={expanded ? '#3b82f6' : '#1e4a80'} />
+
+      {/* Компактный режим */}
+      {!expanded && (
+        <>
+          <text x={10} y={10} fontSize={7.5} fontWeight="700" fill="#94a3b8">
+            {`Т-${labelNum}`}
+            <tspan fill="#3b82f6" fontWeight="400">{length ? ` · ${length}м` : ''}</tspan>
+          </text>
+          <text x={10} y={20} fontSize={7} fill="#475569">
+            {res?.size ? `Ø${res.size.outer}×${res.size.wall}` : '—'}
+            {res?.flowRate != null && <tspan fill="#34d399"> · {res.flowRate.toFixed(1)} л/мин</tspan>}
+          </text>
+        </>
+      )}
+
+      {/* Развёрнутый режим */}
+      {expanded && (
+        <>
+          {/* Строка 1: название + длина */}
+          <text x={10} y={13} fontSize={8} fontWeight="700" fill="#e2e8f0">
+            {`Труба-${labelNum}`}
+            <tspan fill="#3b82f6" fontWeight="400">{length ? ` · ${length} м.` : ''}</tspan>
+          </text>
+          {/* Строка 2: диаметр */}
+          <text x={10} y={25} fontSize={7.5} fill="#93c5fd">
+            {res?.size ? `Ø${res.size.outer}×${res.size.wall} мм` : `—`}
+          </text>
+          {/* Строка 3: расход */}
+          <text x={10} y={37} fontSize={7} fill="#34d399">
+            {res?.flowRate != null
+              ? `Q=${res.flowRate.toFixed(2)} л/мин · ${(res.flowRate * 0.06).toFixed(3)} м³/ч`
+              : '—'}
+          </text>
+          {/* Строка 4: скорость + ΔP */}
+          <text x={10} y={49} fontSize={7} fill="#fbbf24">
+            {res
+              ? `v=${res.velocity?.toFixed(3)} м/с · ΔP=${res.pressureLoss?.toFixed(0)} Па`
+              : '—'}
+          </text>
+          {/* Крестик «свернуть» */}
+          <text x={w - 12} y={12} fontSize={9} fill="#475569" style={{ cursor: 'pointer' }}>×</text>
+        </>
+      )}
+    </g>
+  );
 }
 
 // ─── Символы узлов ────────────────────────────────────────────────────────────
@@ -241,6 +303,16 @@ const GraphCanvas = forwardRef(function GraphCanvas({
   const [drag, setDrag] = useState(null);
   const [pan,  setPan]  = useState(null);
   const [dragOver, setDragOver] = useState(false);
+  const [expandedEdges, setExpandedEdges] = useState(new Set());
+
+  const toggleEdgeExpand = useCallback((edgeId) => {
+    setExpandedEdges(prev => {
+      const next = new Set(prev);
+      if (next.has(edgeId)) next.delete(edgeId);
+      else next.add(edgeId);
+      return next;
+    });
+  }, []);
 
   const nodeMap = Object.fromEntries(nodes.map(n => [n.id, n]));
   const edgeNumbers = buildEdgeNumbers(nodes, edges);
@@ -380,27 +452,13 @@ const GraphCanvas = forwardRef(function GraphCanvas({
           const to   = nodeMap[edge.toNodeId];
           if (!from || !to) return null;
           const d   = edgePath(from, edge.fromPortId, to, edge.toPortId);
-          const midN = pathMidpointWithNormal(from, edge.fromPortId, to, edge.toPortId);
+          const mid = pathMidpoint(from, edge.fromPortId, to, edge.toPortId);
           const res = results?.[edge.id];
           const isSel = selectedId === edge.id;
+          const isExp = expandedEdges.has(edge.id);
           const supplyColor = isSel ? '#fca5a5' : '#ef4444';
           const returnColor = isSel ? '#60a5fa' : '#3b82f6';
-          const length = edge.pipeProps?.length;
           const labelNum = edgeNumbers[edge.id] ?? '?';
-
-          // Вычисляем позицию чипсины: смещаем на 50px по нормали
-          let labelX = 0, labelY = 0, leaderX = 0, leaderY = 0;
-          if (midN) {
-            const OFFSET = 52;
-            labelX = midN.mx + midN.nx * OFFSET;
-            labelY = midN.my + midN.ny * OFFSET;
-            leaderX = midN.mx;
-            leaderY = midN.my;
-          }
-
-          // Ширина чипсины зависит от наличия результатов
-          const chipW = res ? 200 : 100;
-          const chipH = res ? 52 : 22;
 
           return (
             <g key={edge.id} onClick={e => { e.stopPropagation(); onEdgeClick(edge.id); }}
@@ -416,58 +474,15 @@ const GraphCanvas = forwardRef(function GraphCanvas({
                 markerEnd="url(#arr)" />
               {isSel && <path d={d} stroke="#ffffff" strokeWidth={5} fill="none" strokeLinecap="round" opacity={0.08} />}
 
-              {midN && (
-                <g style={{ pointerEvents: 'none' }}>
-                  {/* Линия-выноска от середины трубы до чипсины */}
-                  <line
-                    x1={leaderX} y1={leaderY}
-                    x2={labelX} y2={labelY}
-                    stroke={isSel ? '#93c5fd' : '#334155'}
-                    strokeWidth={1}
-                    strokeDasharray="3 2"
+              {mid && (
+                <g transform={`translate(${mid.x},${mid.y})`}>
+                  <EdgeChip
+                    edge={edge}
+                    res={res}
+                    labelNum={labelNum}
+                    expanded={isExp}
+                    onToggle={() => toggleEdgeExpand(edge.id)}
                   />
-                  {/* Точка привязки на трубе */}
-                  <circle cx={leaderX} cy={leaderY} r={2.5} fill={isSel ? '#93c5fd' : '#475569'} />
-                  {/* Чипсина */}
-                  <g transform={`translate(${labelX - chipW / 2}, ${labelY - chipH / 2})`}>
-                    {/* Тень */}
-                    <rect x={1} y={1} width={chipW} height={chipH} rx={5}
-                      fill="#000" opacity={0.35} />
-                    {/* Фон чипсины */}
-                    <rect width={chipW} height={chipH} rx={5}
-                      fill={isSel ? '#1e3a5f' : '#0f1f35'}
-                      stroke={isSel ? '#3b82f6' : '#1e3a5f'}
-                      strokeWidth={isSel ? 1.2 : 0.8} />
-                    {/* Цветная полоска слева */}
-                    <rect width={3} height={chipH} rx={2}
-                      fill={isSel ? '#3b82f6' : '#334155'} />
-                    {/* Строка 1: Название + длина */}
-                    <text x={9} y={11} fontSize={7.5} fontWeight="700"
-                      fill={isSel ? '#e2e8f0' : '#94a3b8'}>
-                      {`Труба-${labelNum}`}
-                      <tspan fill={isSel ? '#93c5fd' : '#3b82f6'} fontWeight="400">
-                        {length ? ` · ${length} м.` : ''}
-                      </tspan>
-                    </text>
-                    {/* Строка 2: диаметр */}
-                    <text x={9} y={22} fontSize={7} fill={isSel ? '#93c5fd' : '#475569'}>
-                      {res?.size
-                        ? `Ø${res.size.outer}×${res.size.wall} мм`
-                        : `L=${length || '?'} м (×2)`}
-                    </text>
-                    {/* Строка 3: расход */}
-                    {res && (
-                      <text x={9} y={33} fontSize={7} fill="#34d399">
-                        {`Q=${res.flowRate?.toFixed(2)} л/мин · ${(res.flowRate * 0.06).toFixed(3)} м³/ч`}
-                      </text>
-                    )}
-                    {/* Строка 4: скорость + ΔP */}
-                    {res && (
-                      <text x={9} y={44} fontSize={7} fill="#fbbf24">
-                        {`v=${res.velocity?.toFixed(3)} м/с · ΔP=${res.pressureLoss?.toFixed(0)} Па`}
-                      </text>
-                    )}
-                  </g>
                 </g>
               )}
             </g>
