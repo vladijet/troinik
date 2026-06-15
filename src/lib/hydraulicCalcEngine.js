@@ -130,61 +130,77 @@ function bfsPath(startId, targetId, adjUndirected, allowedEdgeIds = null, blocke
 }
 
 /**
- * Строим edgeFlow: для каждого ребра — суммарный расход радиаторов,
- * чьи пути проходят через это ребро.
- * Ключевое: BFS запрещает проходить транзитом через чужие радиаторы,
- * чтобы подводка к одному радиатору не накапливала расход другого.
+ * Строим направленное дерево потока от насоса обходом в ширину.
+ * Возвращает:
+ *   - children: Map<nodeId, [{edgeId, childId}]>  — дочерние узлы (по направлению потока)
+ *   - edgeDirection: Map<edgeId, {from, to}>       — направленность каждого ребра
  */
-function buildEdgeFlows(pumpId, radiators, radFlow, adjUndirected, allowedEdgeIds) {
-  const edgeFlow = {};
-  // Множество всех радиаторов — транзит через них запрещён
-  const radiatorIds = new Set(radiators.map(r => r.id));
+function buildFlowTree(pumpId, adjUndirected) {
+  const children = new Map();
+  const edgeDirection = new Map();
+  const visited = new Set([pumpId]);
+  const queue = [pumpId];
 
-  for (const rad of radiators) {
-    // Для пути до этого радиатора — блокируем все остальные радиаторы
-    const blocked = new Set(radiatorIds);
-    blocked.delete(rad.id); // целевой разрешён
-    const path = bfsPath(pumpId, rad.id, adjUndirected, allowedEdgeIds, blocked);
-    if (!path) continue;
-    const q = radFlow[rad.id] || 0;
-    for (const seg of path) {
-      edgeFlow[seg.edgeId] = (edgeFlow[seg.edgeId] || 0) + q;
+  while (queue.length > 0) {
+    const cur = queue.shift();
+    if (!children.has(cur)) children.set(cur, []);
+    for (const lnk of adjUndirected[cur] || []) {
+      if (visited.has(lnk.nodeId)) continue;
+      visited.add(lnk.nodeId);
+      children.get(cur).push({ edgeId: lnk.edgeId, childId: lnk.nodeId });
+      edgeDirection.set(lnk.edgeId, { from: cur, to: lnk.nodeId });
+      queue.push(lnk.nodeId);
     }
   }
-  return edgeFlow;
+  return { children, edgeDirection };
 }
 
 /**
- * Строим nodeFlow: для каждого узла — суммарный расход всех радиаторов,
- * чьи пути проходят через этот узел.
- * Аналогично запрещаем транзит через чужие радиаторы.
+ * Рекурсивно суммируем расходы: каждый узел несёт сумму расходов
+ * всех радиаторов в его поддереве.
+ * Возвращает { edgeFlow, nodeFlow }.
  */
-function buildNodeFlows(pumpId, radiators, radFlow, adjUndirected, supplyEdgeIds, returnEdgeIds) {
+function buildFlowsFromTree(pumpId, children, radFlow, radiatorIds) {
+  const edgeFlow = {};
   const nodeFlow = {};
-  const radiatorIds = new Set(radiators.map(r => r.id));
 
-  for (const rad of radiators) {
-    const q = radFlow[rad.id] || 0;
-    const blocked = new Set(radiatorIds);
-    blocked.delete(rad.id);
+  // post-order DFS: возвращает суммарный расход поддерева узла
+  function dfs(nodeId) {
+    let subtreeFlow = 0;
 
-    // Путь подачи: от насоса до радиатора
-    const supplyPath = bfsPath(pumpId, rad.id, adjUndirected, supplyEdgeIds, blocked);
-    if (supplyPath) {
-      for (const seg of supplyPath) {
-        nodeFlow[seg.fromNodeId] = (nodeFlow[seg.fromNodeId] || 0) + q;
-        nodeFlow[seg.toNodeId]   = (nodeFlow[seg.toNodeId]   || 0) + q;
-      }
+    // Если это радиатор — его поддерево = его собственный расход
+    if (radiatorIds.has(nodeId)) {
+      subtreeFlow = radFlow[nodeId] || 0;
     }
-    // Путь обратки: от радиатора обратно до насоса
-    const returnPath = bfsPath(rad.id, pumpId, adjUndirected, returnEdgeIds, blocked);
-    if (returnPath) {
-      for (const seg of returnPath) {
-        nodeFlow[seg.fromNodeId] = (nodeFlow[seg.fromNodeId] || 0) + q;
-        nodeFlow[seg.toNodeId]   = (nodeFlow[seg.toNodeId]   || 0) + q;
-      }
+
+    // Проходим по всем дочерним рёбрам
+    for (const { edgeId, childId } of (children.get(nodeId) || [])) {
+      const childFlow = dfs(childId);
+      // Ребро несёт ровно столько, сколько потребляет его поддерево
+      edgeFlow[edgeId] = childFlow;
+      subtreeFlow += childFlow;
     }
+
+    nodeFlow[nodeId] = subtreeFlow;
+    return subtreeFlow;
   }
+
+  dfs(pumpId);
+  return { edgeFlow, nodeFlow };
+}
+
+// Обёртки для обратной совместимости с остальным кодом
+function buildEdgeFlows(pumpId, radiators, radFlow, adjUndirected) {
+  const { children } = buildFlowTree(pumpId, adjUndirected);
+  const radiatorIds = new Set(radiators.map(r => r.id));
+  const { edgeFlow } = buildFlowsFromTree(pumpId, children, radFlow, radiatorIds);
+  return edgeFlow;
+}
+
+function buildNodeFlows(pumpId, radiators, radFlow, adjUndirected) {
+  const { children } = buildFlowTree(pumpId, adjUndirected);
+  const radiatorIds = new Set(radiators.map(r => r.id));
+  const { nodeFlow } = buildFlowsFromTree(pumpId, children, radFlow, radiatorIds);
   return nodeFlow;
 }
 
@@ -228,9 +244,9 @@ export function calcHydraulicGraph(nodes, edges, globalParams) {
   });
 
   // ── 4. Расходы по рёбрам и узлам ──────────────────────────────────────────
-  // Каждое ребро = магистраль (подача + обратка). allowedEdgeIds = null → все рёбра.
-  const edgeFlow = buildEdgeFlows(pump.id, radiators, radFlow, adjUndirected, null);
-  const nodeFlow = buildNodeFlows(pump.id, radiators, radFlow, adjUndirected, null, null);
+  // Используем направленное дерево от насоса — физически точный подход.
+  const edgeFlow = buildEdgeFlows(pump.id, radiators, radFlow, adjUndirected);
+  const nodeFlow = buildNodeFlows(pump.id, radiators, radFlow, adjUndirected);
 
   edges.forEach(e => {
     if (!edgeFlow[e.id]) {
@@ -304,11 +320,28 @@ export function calcHydraulicGraph(nodes, edges, globalParams) {
 
   // ── 7. Критический путь ────────────────────────────────────────────────────
   // ΔP_ветки = сумма потерь рёбер (уже × 2) + фитингов + радиатора
-  const radiatorIdsSet = new Set(radiators.map(r => r.id));
+  // Строим дерево для обхода пути от насоса до каждого радиатора
+  const { children: flowChildren } = buildFlowTree(pump.id, adjUndirected);
+
+  // Собираем путь от насоса до radId по дереву (directed DFS)
+  function getPathInTree(targetId) {
+    const path = [];
+    function dfs(nodeId) {
+      if (nodeId === targetId) return true;
+      for (const { edgeId, childId } of (flowChildren.get(nodeId) || [])) {
+        if (dfs(childId)) {
+          path.unshift({ edgeId, fromNodeId: nodeId, toNodeId: childId });
+          return true;
+        }
+      }
+      return false;
+    }
+    dfs(pump.id);
+    return path;
+  }
+
   function calcBranchDp(radId) {
-    const blocked = new Set(radiatorIdsSet);
-    blocked.delete(radId);
-    const path = bfsPath(pump.id, radId, adjUndirected, null, blocked);
+    const path = getPathInTree(radId);
     if (!path) return 0;
     let dp = 0;
     for (const seg of path) {
