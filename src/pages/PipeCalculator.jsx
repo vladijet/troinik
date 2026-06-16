@@ -255,9 +255,9 @@ export default function PipeCalculator() {
         style={{ background: '#0f172a', borderBottom: '1px solid #1e3a5f' }}>
 
         <div className="flex items-center gap-2 shrink-0">
-          <div className="flex flex-col gap-0.5">
-            <img src="https://media.base44.com/images/public/6a2273e3e4eb03727e3a6619/7c2fd97dc_logoTroinik.svg" alt="Troinik" className="h-6 object-contain" />
-            <div className="text-[10px]" style={{ color: '#ffffff' }}>Топологическая гидравлическая модель</div>
+          <div className="flex flex-col gap-0.5 items-start">
+            <img src="https://media.base44.com/images/public/6a2273e3e4eb03727e3a6619/7c2fd97dc_logoTroinik.svg" alt="Troinik" className="h-6 object-contain self-start" />
+            <div className="text-[10px]" style={{ color: '#ffffff' }}>Расчет тройниковой системы отопления</div>
           </div>
         </div>
 
