@@ -15,19 +15,37 @@ const PORT_SNAP_R = 24; // радиус магнитного захвата по
 
 function snapGrid(v) { return Math.round(v / SNAP) * SNAP; }
 
-function edgePath(fromNode, fromPortId, toNode, toPortId) {
+// Смещает кубическую кривую Безье на offset пикселей по нормали к вектору AB
+function offsetBezier(ax, ay, c1x, c1y, c2x, c2y, bx, by, offset) {
+  const dx = bx - ax;
+  const dy = by - ay;
+  const len = Math.hypot(dx, dy) || 1;
+  const nx = -dy / len; // нормаль (перпендикуляр)
+  const ny =  dx / len;
+  const ox = nx * offset;
+  const oy = ny * offset;
+  return `M${ax+ox},${ay+oy} C${c1x+ox},${c1y+oy} ${c2x+ox},${c2y+oy} ${bx+ox},${by+oy}`;
+}
+
+function edgePaths(fromNode, fromPortId, toNode, toPortId) {
   const a = getPortAbsPos(fromNode, fromPortId);
   const b = getPortAbsPos(toNode, toPortId);
-  if (!a || !b) return '';
+  if (!a || !b) return { supply: '', ret: '', center: '' };
   const dist = Math.max(36, Math.hypot(b.x - a.x, b.y - a.y) * 0.45);
   const ctrl = { right: [dist,0], left: [-dist,0], down: [0,dist], up: [0,-dist] };
   const [c1x,c1y] = ctrl[a.dir] || [dist,0];
   const revDir = { right:'left', left:'right', down:'up', up:'down' };
   const [c2x,c2y] = ctrl[revDir[b.dir]] || [-dist,0];
-  return `M${a.x},${a.y} C${a.x+c1x},${a.y+c1y} ${b.x+c2x},${b.y+c2y} ${b.x},${b.y}`;
+  const ax = a.x, ay = a.y, bx = b.x, by = b.y;
+  const ac1x = ax+c1x, ac1y = ay+c1y, bc2x = bx+c2x, bc2y = by+c2y;
+  return {
+    supply: offsetBezier(ax, ay, ac1x, ac1y, bc2x, bc2y, bx, by, -1.2),
+    ret:    offsetBezier(ax, ay, ac1x, ac1y, bc2x, bc2y, bx, by,  1.2),
+    center: `M${ax},${ay} C${ac1x},${ac1y} ${bc2x},${bc2y} ${bx},${by}`,
+  };
 }
 
-// Середина пути
+// Середина пути (середина кривой Безье при t=0.5)
 function pathMidpoint(fromNode, fromPortId, toNode, toPortId) {
   const a = getPortAbsPos(fromNode, fromPortId);
   const b = getPortAbsPos(toNode, toPortId);
@@ -571,7 +589,7 @@ const GraphCanvas = forwardRef(function GraphCanvas({
           const from = nodeMap[edge.fromNodeId];
           const to   = nodeMap[edge.toNodeId];
           if (!from || !to) return null;
-          const d   = edgePath(from, edge.fromPortId, to, edge.toPortId);
+          const { supply, ret, center } = edgePaths(from, edge.fromPortId, to, edge.toPortId);
           const res = results?.[edge.id];
           const isSel = selectedId === edge.id;
           const supplyColor = isSel ? '#fca5a5' : '#ef4444';
@@ -580,16 +598,13 @@ const GraphCanvas = forwardRef(function GraphCanvas({
           return (
             <g key={edge.id} onClick={e => { e.stopPropagation(); onEdgeClick(edge.id); }}
               style={{ cursor: 'pointer' }}>
-              <path d={d} stroke="transparent" strokeWidth={20} fill="none" />
-              <path d={d} stroke="#000" strokeWidth={7} fill="none" strokeLinecap="round" opacity={0.2} />
-              <path d={d} stroke={returnColor} strokeWidth={isSel ? 2.5 : 1.8}
-                fill="none" strokeLinecap="butt"
-                style={{ transform: 'translate(2px, 2px)' }} />
-              <path d={d} stroke={supplyColor} strokeWidth={isSel ? 2.5 : 1.8}
-                fill="none" strokeLinecap="butt" />
+              <path d={center} stroke="transparent" strokeWidth={20} fill="none" />
+              <path d={center} stroke="#000" strokeWidth={7} fill="none" strokeLinecap="butt" opacity={0.2} />
+              <path d={ret}    stroke={returnColor} strokeWidth={isSel ? 2.5 : 1.8} fill="none" strokeLinecap="butt" />
+              <path d={supply} stroke={supplyColor} strokeWidth={isSel ? 2.5 : 1.8} fill="none" strokeLinecap="butt" />
               {isSel && (
                 <motion.path
-                  d={d} fill="none" strokeLinecap="round"
+                  d={center} fill="none" strokeLinecap="round"
                   stroke="#3b82f6"
                   initial={{ strokeWidth: 0, opacity: 0 }}
                   animate={{ strokeWidth: 6, opacity: 0.13 }}
@@ -637,6 +652,7 @@ const GraphCanvas = forwardRef(function GraphCanvas({
           const to   = nodeMap[edge.toNodeId];
           if (!from || !to) return null;
           const mid = pathMidpoint(from, edge.fromPortId, to, edge.toPortId);
+
           if (!mid) return null;
           const res = results?.[edge.id];
           const isExp = expandedEdges.has(edge.id);
