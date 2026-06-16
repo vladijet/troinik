@@ -120,7 +120,7 @@ function EdgeChip({ edge, res, labelNum, expanded, onToggle, pipeType }) {
           <tspan fontWeight="600" fill="#cbd5e1">{`Труба-${labelNum}`}</tspan>
           {length ? <tspan fill="#3b82f6"> {length}м</tspan> : null}
           {res?.size ? <tspan fill="#64748b">  {res.size.outer}×{res.size.wall}{pipeShort ? ` ${pipeShort}` : ''}</tspan> : null}
-          {res?.flowRate != null ? <tspan fill="#34d399"> {res.flowRate.toFixed(1)}л/м</tspan> : null}
+          {res?.flowRate != null ? <tspan fill="#34d399"> {res.flowRate.toFixed(2)}л/м</tspan> : null}
         </text>
       )}
 
