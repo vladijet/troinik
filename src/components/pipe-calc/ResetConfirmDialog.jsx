@@ -1,13 +1,23 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { AlertTriangle } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 export default function ResetConfirmDialog({ open, onConfirm, onCancel }) {
   return (
+    <AnimatePresence>
+    {open && (
     <Dialog open={open} onOpenChange={onCancel}>
       <DialogContent
         className="max-w-sm"
         style={{ background: '#0f172a', border: '1px solid #1e3a5f', color: '#e2e8f0' }}
+        asChild
+      >
+      <motion.div
+        initial={{ opacity: 0, scale: 0.92, y: 10 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.92, y: 10 }}
+        transition={{ type: 'spring', stiffness: 340, damping: 28 }}
       >
         <DialogHeader>
           <div className="flex items-center gap-3 mb-1">
@@ -43,7 +53,10 @@ export default function ResetConfirmDialog({ open, onConfirm, onCancel }) {
             Сбросить
           </Button>
         </div>
+      </motion.div>
       </DialogContent>
     </Dialog>
+    )}
+    </AnimatePresence>
   );
 }

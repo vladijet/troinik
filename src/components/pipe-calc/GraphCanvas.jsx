@@ -5,6 +5,7 @@
  * Клик по ребру → выбор трубы.
  */
 import { useRef, useState, useCallback, forwardRef, useImperativeHandle, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { getPortAbsPos, NODE_PORT_CONFIG, NODE_SIZE } from '@/lib/hydraulicGraph';
 
 const BG    = '#0f172a';
@@ -35,62 +36,105 @@ function pathMidpoint(fromNode, fromPortId, toNode, toPortId) {
   return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
 }
 
+// ─── Вычисление размеров чипа по содержимому ─────────────────────────────────
+function calcChipSize(labelNum, length, res, expanded) {
+  const CHAR_W = 4.5; // средняя ширина символа при fontSize=7
+  const PAD = 16;
+
+  if (expanded) {
+    // Строки в развёрнутом режиме
+    const lines = [
+      `Труба-${labelNum}${length ? ` · ${length} м` : ''}`,
+      res?.size ? `Ø${res.size.outer}×${res.size.wall} мм` : '—',
+      res?.flowRate != null ? `Q=${res.flowRate.toFixed(2)} л/мин · ${(res.flowRate*0.06).toFixed(3)} м³/ч` : '—',
+      res ? `v=${res.velocity?.toFixed(3)} м/с · ΔP=${res.pressureLoss?.toFixed(0)} Па` : '—',
+    ];
+    const maxLen = Math.max(...lines.map(l => l.length));
+    const w = Math.max(120, maxLen * CHAR_W * 1.05 + PAD);
+    return { w, h: 58, rx: 6 };
+  }
+
+  // Компактный режим
+  let compact = `Труба-${labelNum}`;
+  if (length) compact += ` ${length}м`;
+  if (res?.size) compact += `  Ø${res.size.outer}`;
+  if (res?.flowRate != null) compact += ` ${res.flowRate.toFixed(1)}л/м`;
+  const w = Math.max(60, compact.length * CHAR_W + PAD);
+  return { w, h: 18, rx: 9 };
+}
+
 // ─── Чипсина трубы ────────────────────────────────────────────────────────────
 function EdgeChip({ edge, res, labelNum, expanded, onToggle }) {
   const length = edge.pipeProps?.length;
-  // Компактный: одна строка — название + диаметр + расход
-  const cW = 108, cH = 18;
-  // Развёрнутый: 4 строки
-  const eW = 152, eH = 52;
-  const w = expanded ? eW : cW;
-  const h = expanded ? eH : cH;
-  const rx = expanded ? 5 : 9;
+  const { w, h, rx } = calcChipSize(labelNum, length, res, expanded);
 
   return (
-    <g transform={`translate(${-w / 2},${-h / 2})`}
+    <motion.g
+      animate={{ x: -w / 2, y: -h / 2 }}
+      transition={{ type: 'spring', stiffness: 320, damping: 30 }}
       onClick={e => { e.stopPropagation(); onToggle(); }}
       style={{ cursor: 'pointer' }}>
-      {/* Тень */}
-      <rect x={1} y={1} width={w} height={h} rx={rx} fill="#000" opacity={0.35} />
-      {/* Фон — полупрозрачный glassmorphism */}
-      <rect width={w} height={h} rx={rx}
-        fill={expanded ? 'rgba(15,31,56,0.92)' : 'rgba(15,25,48,0.82)'}
-        stroke={expanded ? '#3b82f6' : '#253a5e'}
-        strokeWidth={expanded ? 1.2 : 0.8} />
 
+      {/* Анимированный фон */}
+      <motion.rect
+        animate={{ width: w, height: h, rx }}
+        transition={{ type: 'spring', stiffness: 320, damping: 30 }}
+        x={1} y={1} fill="#000" opacity={0.35}
+      />
+      <motion.rect
+        animate={{
+          width: w, height: h, rx,
+          fill: expanded ? 'rgba(15,31,56,0.95)' : 'rgba(15,25,48,0.85)',
+          stroke: expanded ? '#3b82f6' : '#253a5e',
+          strokeWidth: expanded ? 1.2 : 0.8,
+        }}
+        transition={{ type: 'spring', stiffness: 320, damping: 30 }}
+      />
 
-      {/* Компактный режим — одна строка */}
-      {!expanded && (
-        <text x={8} y={12} fontSize={7} fill="#94a3b8">
-          <tspan fontWeight="600" fill="#cbd5e1">{`Труба-${labelNum}`}</tspan>
-          {length ? <tspan fill="#3b82f6"> {length}м</tspan> : null}
-          {res?.size ? <tspan fill="#64748b">  Ø{res.size.outer}</tspan> : null}
-          {res?.flowRate != null ? <tspan fill="#34d399"> {res.flowRate.toFixed(2)}л/м</tspan> : null}
-        </text>
-      )}
+      {/* Компактный режим */}
+      <AnimatePresence mode="wait">
+        {!expanded && (
+          <motion.text
+            key="compact"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.12 }}
+            x={8} y={12} fontSize={7} fill="#94a3b8">
+            <tspan fontWeight="600" fill="#cbd5e1">{`Труба-${labelNum}`}</tspan>
+            {length ? <tspan fill="#3b82f6"> {length}м</tspan> : null}
+            {res?.size ? <tspan fill="#64748b">  Ø{res.size.outer}</tspan> : null}
+            {res?.flowRate != null ? <tspan fill="#34d399"> {res.flowRate.toFixed(1)}л/м</tspan> : null}
+          </motion.text>
+        )}
 
-      {/* Развёрнутый режим */}
-      {expanded && (
-        <>
-          <text x={8} y={11} fontSize={7.5} fontWeight="600" fill="#e2e8f0">
-            {`Труба-${labelNum}`}
-            <tspan fill="#3b82f6" fontWeight="400">{length ? ` · ${length} м` : ''}</tspan>
-          </text>
-          <text x={8} y={22} fontSize={7} fill="#93c5fd">
-            {res?.size ? `Ø${res.size.outer}×${res.size.wall} мм` : '—'}
-          </text>
-          <text x={8} y={33} fontSize={7} fill="#34d399">
-            {res?.flowRate != null
-              ? `Q=${res.flowRate.toFixed(2)} л/мин · ${(res.flowRate * 0.06).toFixed(3)} м³/ч`
-              : '—'}
-          </text>
-          <text x={8} y={44} fontSize={7} fill="#fbbf24">
-            {res ? `v=${res.velocity?.toFixed(3)} м/с · ΔP=${res.pressureLoss?.toFixed(0)} Па` : '—'}
-          </text>
-          <text x={w - 10} y={11} fontSize={8} fill="#334155" style={{ cursor: 'pointer' }}>×</text>
-        </>
-      )}
-    </g>
+        {/* Развёрнутый режим */}
+        {expanded && (
+          <motion.g
+            key="expanded"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.14, delay: 0.05 }}>
+            <text x={8} y={13} fontSize={7.5} fontWeight="600" fill="#e2e8f0">
+              {`Труба-${labelNum}`}
+              <tspan fill="#3b82f6" fontWeight="400">{length ? ` · ${length} м` : ''}</tspan>
+            </text>
+            <text x={8} y={25} fontSize={7} fill="#93c5fd">
+              {res?.size ? `Ø${res.size.outer}×${res.size.wall} мм` : '—'}
+            </text>
+            <text x={8} y={37} fontSize={7} fill="#34d399">
+              {res?.flowRate != null
+                ? `Q=${res.flowRate.toFixed(2)} л/мин · ${(res.flowRate * 0.06).toFixed(3)} м³/ч`
+                : '—'}
+            </text>
+            <text x={8} y={49} fontSize={7} fill="#fbbf24">
+              {res ? `v=${res.velocity?.toFixed(3)} м/с · ΔP=${res.pressureLoss?.toFixed(0)} Па` : '—'}
+            </text>
+          </motion.g>
+        )}
+      </AnimatePresence>
+    </motion.g>
   );
 }
 
@@ -206,9 +250,17 @@ function GraphNode({ node, sel, res, usedPorts, errorPorts, cappedPorts, inPorts
       onMouseDown={onMouseDown} onClick={onClick}
       style={{ cursor: 'move', userSelect: 'none' }}>
 
-      {sel && <rect x={-size.width/2-10} y={-size.height/2-10}
-        width={size.width+20} height={size.height+20}
-        rx={4} fill="none" stroke="#3b82f6" strokeWidth={1} strokeDasharray="5 3" opacity={0.6} />}
+      {sel && (
+        <motion.rect
+          x={-size.width/2-10} y={-size.height/2-10}
+          width={size.width+20} height={size.height+20}
+          rx={4} fill="none" stroke="#3b82f6" strokeDasharray="5 3"
+          initial={{ opacity: 0, strokeWidth: 0 }}
+          animate={{ opacity: 0.7, strokeWidth: 1.2 }}
+          exit={{ opacity: 0 }}
+          transition={{ type: 'spring', stiffness: 400, damping: 28 }}
+        />
+      )}
 
       <g transform={`rotate(${rot})`}>
         {node.type === 'pump'     && <PumpSymbol     sel={sel} res={res} />}
@@ -547,7 +599,15 @@ const GraphCanvas = forwardRef(function GraphCanvas({
               <path d={d} stroke={supplyColor} strokeWidth={isSel ? 2.5 : 1.8}
                 fill="none" strokeLinecap="round"
                 markerEnd="url(#arr)" />
-              {isSel && <path d={d} stroke="#ffffff" strokeWidth={5} fill="none" strokeLinecap="round" opacity={0.08} />}
+              {isSel && (
+                <motion.path
+                  d={d} fill="none" strokeLinecap="round"
+                  stroke="#3b82f6"
+                  initial={{ strokeWidth: 0, opacity: 0 }}
+                  animate={{ strokeWidth: 6, opacity: 0.13 }}
+                  transition={{ type: 'spring', stiffness: 400, damping: 28 }}
+                />
+              )}
             </g>
           );
         })}
