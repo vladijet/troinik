@@ -7,6 +7,7 @@
 import { useRef, useState, useCallback, forwardRef, useImperativeHandle, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { getPortAbsPos, NODE_PORT_CONFIG, NODE_SIZE } from '@/lib/hydraulicGraph';
+import { PIPE_TYPES } from '@/lib/pipeStandards';
 
 const BG    = '#0f172a';
 const GRID  = '#1e3a5f';
@@ -60,12 +61,16 @@ const CHIP_PAD_X = 12;
 const CHIP_PAD_Y = 10;
 const CHIP_FONT  = 8.5;
 
-function EdgeChip({ edge, res, labelNum, expanded, onToggle }) {
+function EdgeChip({ edge, res, labelNum, expanded, onToggle, pipeType }) {
   const length = edge.pipeProps?.length;
+  const pipeName = pipeType ? (PIPE_TYPES[pipeType]?.name || pipeType) : null;
 
   // ── Строки развёрнутого режима ──
   const lines = [
     { text: `Труба-${labelNum}`, accent: length ? `, L=${length}м.` : '', color: '#e2e8f0', accentColor: '#3b82f6', bold: true },
+    pipeName
+      ? { text: pipeName, color: '#7c3aed' }
+      : null,
     res?.size
       ? { text: `Ø ${res.size.outer}×${res.size.wall}`, color: '#64748b' }
       : null,
@@ -84,7 +89,8 @@ function EdgeChip({ edge, res, labelNum, expanded, onToggle }) {
   )) + CHIP_PAD_X * 2);
   const expandedH = lines.length * CHIP_LINE_H + CHIP_PAD_Y * 2;
 
-  const compactText = `Труба-${labelNum}${length ? ` ${length}м` : ''}${res?.size ? ` Ø${res.size.outer}` : ''}`;
+  const pipeNameShort = pipeName ? (pipeName.length > 12 ? pipeName.slice(0, 12) + '…' : pipeName) : null;
+  const compactText = `Труба-${labelNum}${length ? ` ${length}м` : ''}${res?.size ? ` Ø${res.size.outer}` : ''}${pipeNameShort ? ` ${pipeNameShort}` : ''}`;
   const compactW = Math.max(60, compactText.length * 4.5 + 16);
   const compactH = 18;
 
@@ -110,6 +116,7 @@ function EdgeChip({ edge, res, labelNum, expanded, onToggle }) {
           <tspan fontWeight="600" fill="#cbd5e1">{`Труба-${labelNum}`}</tspan>
           {length ? <tspan fill="#3b82f6"> {length}м</tspan> : null}
           {res?.size ? <tspan fill="#64748b">  Ø{res.size.outer}</tspan> : null}
+          {pipeNameShort ? <tspan fill="#7c3aed"> {pipeNameShort}</tspan> : null}
           {res?.flowRate != null ? <tspan fill="#34d399"> {res.flowRate.toFixed(1)}л/м</tspan> : null}
         </text>
       )}
@@ -359,7 +366,7 @@ function buildEdgeNumbers(nodes, edges) {
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 const GraphCanvas = forwardRef(function GraphCanvas({
-  nodes, edges, selectedId, results, openPorts, cappedPorts, inPorts,
+  nodes, edges, selectedId, results, openPorts, cappedPorts, inPorts, pipeType,
   onNodeMove, onNodeClick, onPortClick, onRotate, onEdgeClick, onDropElement, onDelete,
 }, ref) {
   const svgRef = useRef(null);
@@ -675,6 +682,7 @@ const GraphCanvas = forwardRef(function GraphCanvas({
                 res={res}
                 labelNum={labelNum}
                 expanded={isExp}
+                pipeType={pipeType}
                 onToggle={() => {
                   const wasExp = expandedEdges.has(edge.id);
                   // закрываем все, открываем только эту (или закрываем если уже открыта)

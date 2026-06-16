@@ -423,6 +423,7 @@ export default function PipeCalculator() {
             openPorts={openPorts}
             cappedPorts={effectiveCappedPorts}
             inPorts={inPorts}
+            pipeType={globalParams.pipeType}
             onNodeMove={handleNodeMove}
             onNodeClick={id => { setPendingPort(null); setSelectedId(id); }}
             onPortClick={handlePortClick}
