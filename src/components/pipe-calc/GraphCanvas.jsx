@@ -414,18 +414,34 @@ const GraphCanvas = forwardRef(function GraphCanvas({
       }
     }
 
-    // Направляющие линии по центрам узлов (если snap не сработал)
+    // Направляющие линии (если snap не сработал)
     if (newGuideX === null && newGuideY === null) {
       const GUIDE_R = 10;
+
+      // Вычисляем положение порта перетаскиваемого узла для сравнения
+      const movingPortIds = Object.keys(movingConfig || {});
+
       for (const other of nodes) {
         if (other.id === drag.id) continue;
+
         if (other.type === 'radiator') {
-          // Для радиатора направляющие идут через порт, а не через центр
+          // Для радиатора: направляющая проходит через его порт
           const portPos = getPortAbsPos(other, 'port');
-          if (portPos) {
-            if (newGuideX === null && Math.abs(nx - portPos.x) < GUIDE_R) newGuideX = portPos.x;
-            if (newGuideY === null && Math.abs(ny - portPos.y) < GUIDE_R) newGuideY = portPos.y;
+          if (!portPos) continue;
+          // Проверяем совпадение порта радиатора с портом перетаскиваемого узла
+          let matchX = false, matchY = false;
+          for (const pid of movingPortIds) {
+            const mp = getPortAbsPos(movingNode, pid);
+            if (!mp) continue;
+            if (!matchX && Math.abs(mp.x - portPos.x) < GUIDE_R) matchX = true;
+            if (!matchY && Math.abs(mp.y - portPos.y) < GUIDE_R) matchY = true;
           }
+          // Также проверяем центр перетаскиваемого узла
+          if (!matchX && Math.abs(nx - portPos.x) < GUIDE_R) matchX = true;
+          if (!matchY && Math.abs(ny - portPos.y) < GUIDE_R) matchY = true;
+
+          if (newGuideX === null && matchX) newGuideX = portPos.x;
+          if (newGuideY === null && matchY) newGuideY = portPos.y;
         } else {
           if (newGuideX === null && Math.abs(nx - other.x) < GUIDE_R) newGuideX = other.x;
           if (newGuideY === null && Math.abs(ny - other.y) < GUIDE_R) newGuideY = other.y;
