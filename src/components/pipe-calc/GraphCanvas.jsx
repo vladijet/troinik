@@ -292,10 +292,10 @@ function GraphNode({ node, sel, res, usedPorts, errorPorts, cappedPorts, inPorts
             onClick={e => { e.stopPropagation(); onRotate(node.id); }}
             style={{ cursor: 'pointer' }}>
             <rect x={-10} y={-10} width={20} height={20} rx={4} fill="#1e293b" stroke="#3b82f6" strokeWidth={1} />
-            {/* Чёткая иконка поворота: дуга со стрелкой */}
-            <g fill="none" stroke="#3b82f6" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-              <path d="M -4,0 A 5 5 0 1 1 0,5" />
-              <polyline points="0,5 0,2 3,5" />
+            {/* RotateCw (lucide) — размер 13, центрирован */}
+            <g transform="translate(-6.5,-6.5) scale(0.541)" fill="none" stroke="#3b82f6" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+              <path d="M 21 2 v 6 h -6" />
+              <path d="M 21 13 a 9 9 0 1 1 -3-7.7 L 21 8" />
             </g>
           </g>
           {/* Удаление — правый верхний угол */}
