@@ -5,7 +5,7 @@
  * Клик по ребру → выбор трубы.
  */
 import { useRef, useState, useCallback, forwardRef, useImperativeHandle, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { getPortAbsPos, NODE_PORT_CONFIG, NODE_SIZE } from '@/lib/hydraulicGraph';
 
 const BG    = '#0f172a';
@@ -36,105 +36,83 @@ function pathMidpoint(fromNode, fromPortId, toNode, toPortId) {
   return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
 }
 
-// ─── Вычисление размеров чипа по содержимому ─────────────────────────────────
-function calcChipSize(labelNum, length, res, expanded) {
-  const CHAR_W = 4.5; // средняя ширина символа при fontSize=7
-  const PAD = 16;
-
-  if (expanded) {
-    // Строки в развёрнутом режиме
-    const lines = [
-      `Труба-${labelNum}${length ? ` · ${length} м` : ''}`,
-      res?.size ? `Ø${res.size.outer}×${res.size.wall} мм` : '—',
-      res?.flowRate != null ? `Q=${res.flowRate.toFixed(2)} л/мин · ${(res.flowRate*0.06).toFixed(3)} м³/ч` : '—',
-      res ? `v=${res.velocity?.toFixed(3)} м/с · ΔP=${res.pressureLoss?.toFixed(0)} Па` : '—',
-    ];
-    const maxLen = Math.max(...lines.map(l => l.length));
-    const w = Math.max(120, maxLen * CHAR_W * 1.05 + PAD);
-    return { w, h: 58, rx: 6 };
-  }
-
-  // Компактный режим
-  let compact = `Труба-${labelNum}`;
-  if (length) compact += ` ${length}м`;
-  if (res?.size) compact += `  Ø${res.size.outer}`;
-  if (res?.flowRate != null) compact += ` ${res.flowRate.toFixed(1)}л/м`;
-  const w = Math.max(60, compact.length * CHAR_W + PAD);
-  return { w, h: 18, rx: 9 };
-}
-
 // ─── Чипсина трубы ────────────────────────────────────────────────────────────
+// Компактный: одна строка. Развёрнутый: столбик строк, центрирован по (0,0).
+const CHIP_LINE_H = 14; // межстрочный интервал px
+const CHIP_PAD_X = 12;
+const CHIP_PAD_Y = 10;
+const CHIP_FONT  = 8.5;
+
 function EdgeChip({ edge, res, labelNum, expanded, onToggle }) {
   const length = edge.pipeProps?.length;
-  const { w, h, rx } = calcChipSize(labelNum, length, res, expanded);
+
+  // ── Строки развёрнутого режима ──
+  const lines = [
+    { text: `Труба-${labelNum}`, accent: length ? `, L=${length}м.` : '', color: '#e2e8f0', accentColor: '#3b82f6', bold: true },
+    res?.size
+      ? { text: `Ø ${res.size.outer}×${res.size.wall}`, color: '#64748b' }
+      : null,
+    res?.flowRate != null
+      ? { text: `${res.flowRate.toFixed(2)}л/мин (${(res.flowRate * 0.06).toFixed(3)} м³/ч)`, color: '#34d399' }
+      : null,
+    res
+      ? { text: `v=${res.velocity?.toFixed(3)} м/с;`, color: '#fbbf24' }
+      : null,
+  ].filter(Boolean);
+
+  // ── Размеры ──
+  const CHAR_W = 5.2;
+  const expandedW = Math.max(130, Math.max(...lines.map(l =>
+    ((l.text?.length || 0) + (l.accent?.length || 0)) * CHAR_W
+  )) + CHIP_PAD_X * 2);
+  const expandedH = lines.length * CHIP_LINE_H + CHIP_PAD_Y * 2;
+
+  const compactText = `Труба-${labelNum}${length ? ` ${length}м` : ''}${res?.size ? ` Ø${res.size.outer}` : ''}`;
+  const compactW = Math.max(60, compactText.length * 4.5 + 16);
+  const compactH = 18;
+
+  const w = expanded ? expandedW : compactW;
+  const h = expanded ? expandedH : compactH;
+  const rx = expanded ? 10 : 9;
 
   return (
-    <motion.g
-      animate={{ x: -w / 2, y: -h / 2 }}
-      transition={{ type: 'spring', stiffness: 320, damping: 30 }}
+    <g
+      transform={`translate(${-w / 2},${-h / 2})`}
       onClick={e => { e.stopPropagation(); onToggle(); }}
       style={{ cursor: 'pointer' }}>
 
-      {/* Анимированный фон */}
-      <motion.rect
-        animate={{ width: w, height: h, rx }}
-        transition={{ type: 'spring', stiffness: 320, damping: 30 }}
-        x={1} y={1} fill="#000" opacity={0.35}
-      />
-      <motion.rect
-        animate={{
-          width: w, height: h, rx,
-          fill: expanded ? 'rgba(15,31,56,0.95)' : 'rgba(15,25,48,0.85)',
-          stroke: expanded ? '#3b82f6' : '#253a5e',
-          strokeWidth: expanded ? 1.2 : 0.8,
-        }}
-        transition={{ type: 'spring', stiffness: 320, damping: 30 }}
+      {/* Фон — без рамки */}
+      <rect
+        width={w} height={h} rx={rx}
+        fill={expanded ? 'rgba(15,28,50,0.93)' : 'rgba(15,25,48,0.82)'}
       />
 
       {/* Компактный режим */}
-      <AnimatePresence mode="wait">
-        {!expanded && (
-          <motion.text
-            key="compact"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.12 }}
-            x={8} y={12} fontSize={7} fill="#94a3b8">
-            <tspan fontWeight="600" fill="#cbd5e1">{`Труба-${labelNum}`}</tspan>
-            {length ? <tspan fill="#3b82f6"> {length}м</tspan> : null}
-            {res?.size ? <tspan fill="#64748b">  Ø{res.size.outer}</tspan> : null}
-            {res?.flowRate != null ? <tspan fill="#34d399"> {res.flowRate.toFixed(1)}л/м</tspan> : null}
-          </motion.text>
-        )}
+      {!expanded && (
+        <text x={8} y={12} fontSize={7} fill="#94a3b8">
+          <tspan fontWeight="600" fill="#cbd5e1">{`Труба-${labelNum}`}</tspan>
+          {length ? <tspan fill="#3b82f6"> {length}м</tspan> : null}
+          {res?.size ? <tspan fill="#64748b">  Ø{res.size.outer}</tspan> : null}
+          {res?.flowRate != null ? <tspan fill="#34d399"> {res.flowRate.toFixed(1)}л/м</tspan> : null}
+        </text>
+      )}
 
-        {/* Развёрнутый режим */}
-        {expanded && (
-          <motion.g
-            key="expanded"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.14, delay: 0.05 }}>
-            <text x={8} y={13} fontSize={7.5} fontWeight="600" fill="#e2e8f0">
-              {`Труба-${labelNum}`}
-              <tspan fill="#3b82f6" fontWeight="400">{length ? ` · ${length} м` : ''}</tspan>
-            </text>
-            <text x={8} y={25} fontSize={7} fill="#93c5fd">
-              {res?.size ? `Ø${res.size.outer}×${res.size.wall} мм` : '—'}
-            </text>
-            <text x={8} y={37} fontSize={7} fill="#34d399">
-              {res?.flowRate != null
-                ? `Q=${res.flowRate.toFixed(2)} л/мин · ${(res.flowRate * 0.06).toFixed(3)} м³/ч`
-                : '—'}
-            </text>
-            <text x={8} y={49} fontSize={7} fill="#fbbf24">
-              {res ? `v=${res.velocity?.toFixed(3)} м/с · ΔP=${res.pressureLoss?.toFixed(0)} Па` : '—'}
-            </text>
-          </motion.g>
-        )}
-      </AnimatePresence>
-    </motion.g>
+      {/* Развёрнутый режим — столбик */}
+      {expanded && lines.map((line, i) => (
+        <text
+          key={i}
+          x={CHIP_PAD_X}
+          y={CHIP_PAD_Y + CHIP_FONT + i * CHIP_LINE_H}
+          fontSize={CHIP_FONT}
+          fontWeight={line.bold ? '600' : '400'}
+          fill={line.color}>
+          {line.text}
+          {line.accent && (
+            <tspan fill={line.accentColor} fontWeight="400">{line.accent}</tspan>
+          )}
+        </text>
+      ))}
+    </g>
   );
 }
 
