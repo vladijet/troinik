@@ -419,8 +419,17 @@ const GraphCanvas = forwardRef(function GraphCanvas({
       const GUIDE_R = 10;
       for (const other of nodes) {
         if (other.id === drag.id) continue;
-        if (newGuideX === null && Math.abs(nx - other.x) < GUIDE_R) newGuideX = other.x;
-        if (newGuideY === null && Math.abs(ny - other.y) < GUIDE_R) newGuideY = other.y;
+        if (other.type === 'radiator') {
+          // Для радиатора направляющие идут через порт, а не через центр
+          const portPos = getPortAbsPos(other, 'port');
+          if (portPos) {
+            if (newGuideX === null && Math.abs(nx - portPos.x) < GUIDE_R) newGuideX = portPos.x;
+            if (newGuideY === null && Math.abs(ny - portPos.y) < GUIDE_R) newGuideY = portPos.y;
+          }
+        } else {
+          if (newGuideX === null && Math.abs(nx - other.x) < GUIDE_R) newGuideX = other.x;
+          if (newGuideY === null && Math.abs(ny - other.y) < GUIDE_R) newGuideY = other.y;
+        }
       }
     }
 
