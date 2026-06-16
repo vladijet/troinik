@@ -426,6 +426,7 @@ export default function PipeCalculator() {
             onNodeClick={id => { setPendingPort(null); setSelectedId(id); }}
             onPortClick={handlePortClick}
             onRotate={handleRotate}
+            onDelete={handleDelete}
             onEdgeClick={id => { setPendingPort(null); setSelectedId(id); }}
           />
         </div>

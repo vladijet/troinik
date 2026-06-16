@@ -192,7 +192,7 @@ function PortDot({ px, py, portId, nodeId, nodeType, isOpen, isError, isCapped, 
 }
 
 // ─── Узел ─────────────────────────────────────────────────────────────────────
-function GraphNode({ node, sel, res, usedPorts, errorPorts, cappedPorts, inPorts, onMouseDown, onClick, onPortClick, onRotate }) {
+function GraphNode({ node, sel, res, usedPorts, errorPorts, cappedPorts, inPorts, onMouseDown, onClick, onPortClick, onRotate, onDelete }) {
   const config = NODE_PORT_CONFIG[node.type];
   const size   = NODE_SIZE[node.type];
   if (!config) return null;
@@ -232,14 +232,33 @@ function GraphNode({ node, sel, res, usedPorts, errorPorts, cappedPorts, inPorts
         );
       })}
 
-      {/* Кнопка поворота */}
+      {/* Кнопки поворота и удаления */}
       {sel && node.type !== 'pump' && (
-        <g transform={`translate(${size.width/2+14},${-size.height/2-10})`}
-          onClick={e => { e.stopPropagation(); onRotate(node.id); }}
-          style={{ cursor: 'pointer' }}>
-          <circle r={9} fill="#1e293b" stroke="#3b82f6" strokeWidth={1.5} />
-          <text textAnchor="middle" fontSize={11} fill="#93c5fd" dy={4}>↻</text>
-        </g>
+        <>
+          {/* Поворот */}
+          <g transform={`translate(${size.width/2+14},${-size.height/2-10})`}
+            onClick={e => { e.stopPropagation(); onRotate(node.id); }}
+            style={{ cursor: 'pointer' }}>
+            <rect x={-10} y={-10} width={20} height={20} rx={4} fill="#1e293b" stroke="#3b82f6" strokeWidth={1.2} />
+            <text textAnchor="middle" fontSize={12} fill="#93c5fd" dy={4.5}>↻</text>
+          </g>
+          {/* Удаление */}
+          <g transform={`translate(${size.width/2+36},${-size.height/2-10})`}
+            onClick={e => { e.stopPropagation(); onDelete(node.id); }}
+            style={{ cursor: 'pointer' }}>
+            <rect x={-10} y={-10} width={20} height={20} rx={4} fill="#1e293b" stroke="#ef4444" strokeWidth={1.2} />
+            {/* Иконка корзины (lucide-style) */}
+            <g stroke="#ef4444" strokeWidth={1.3} strokeLinecap="round" strokeLinejoin="round" fill="none">
+              <line x1={-5} y1={-4.5} x2={5} y2={-4.5} />
+              <line x1={-3} y1={-4.5} x2={-3} y2={-6} />
+              <line x1={3} y1={-4.5} x2={3} y2={-6} />
+              <rect x={-4.5} y={-3.5} width={9} height={9} rx={1} />
+              <line x1={-2} y1={-1} x2={-2} y2={3} />
+              <line x1={0} y1={-1} x2={0} y2={3} />
+              <line x1={2} y1={-1} x2={2} y2={3} />
+            </g>
+          </g>
+        </>
       )}
     </g>
   );
@@ -282,7 +301,7 @@ function buildEdgeNumbers(nodes, edges) {
 // ─── Main ─────────────────────────────────────────────────────────────────────
 const GraphCanvas = forwardRef(function GraphCanvas({
   nodes, edges, selectedId, results, openPorts, cappedPorts, inPorts,
-  onNodeMove, onNodeClick, onPortClick, onRotate, onEdgeClick, onDropElement,
+  onNodeMove, onNodeClick, onPortClick, onRotate, onEdgeClick, onDropElement, onDelete,
 }, ref) {
   const svgRef = useRef(null);
   useImperativeHandle(ref, () => svgRef.current, []);
@@ -365,6 +384,7 @@ const GraphCanvas = forwardRef(function GraphCanvas({
     let newGuideX = null;
     let newGuideY = null;
 
+    // Snap по портам
     if (movingConfig) {
       outer: for (const [myPortId] of Object.entries(movingConfig)) {
         const myPos = getPortAbsPos(movingNode, myPortId);
@@ -387,25 +407,15 @@ const GraphCanvas = forwardRef(function GraphCanvas({
           }
         }
       }
+    }
 
-      // Если не сделали snap, ищем частичные совпадения по X или Y
-      if (newGuideX === null && newGuideY === null) {
-        const GUIDE_R = 8;
-        for (const [myPortId] of Object.entries(movingConfig)) {
-          const myPos = getPortAbsPos(movingNode, myPortId);
-          if (!myPos) continue;
-          for (const other of nodes) {
-            if (other.id === drag.id) continue;
-            const otherConfig = NODE_PORT_CONFIG[other.type];
-            if (!otherConfig) continue;
-            for (const [otherPortId] of Object.entries(otherConfig)) {
-              const oPos = getPortAbsPos(other, otherPortId);
-              if (!oPos) continue;
-              if (newGuideX === null && Math.abs(myPos.x - oPos.x) < GUIDE_R) newGuideX = oPos.x;
-              if (newGuideY === null && Math.abs(myPos.y - oPos.y) < GUIDE_R) newGuideY = oPos.y;
-            }
-          }
-        }
+    // Направляющие линии по центрам узлов (если snap не сработал)
+    if (newGuideX === null && newGuideY === null) {
+      const GUIDE_R = 10;
+      for (const other of nodes) {
+        if (other.id === drag.id) continue;
+        if (newGuideX === null && Math.abs(nx - other.x) < GUIDE_R) newGuideX = other.x;
+        if (newGuideY === null && Math.abs(ny - other.y) < GUIDE_R) newGuideY = other.y;
       }
     }
 
@@ -519,6 +529,7 @@ const GraphCanvas = forwardRef(function GraphCanvas({
             onClick={e => { e.stopPropagation(); onNodeClick(node.id); }}
             onPortClick={onPortClick}
             onRotate={onRotate}
+            onDelete={onDelete}
           />
         ))}
 
