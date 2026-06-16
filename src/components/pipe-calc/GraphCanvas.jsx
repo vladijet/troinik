@@ -235,27 +235,32 @@ function GraphNode({ node, sel, res, usedPorts, errorPorts, cappedPorts, inPorts
       {/* Кнопки поворота и удаления */}
       {sel && node.type !== 'pump' && (
         <>
-          {/* Поворот */}
-          <g transform={`translate(${size.width/2+14},${-size.height/2-10})`}
+          {/* Поворот — левый верхний угол */}
+          <g transform={`translate(${-size.width/2-10},${-size.height/2-10})`}
             onClick={e => { e.stopPropagation(); onRotate(node.id); }}
             style={{ cursor: 'pointer' }}>
-            <rect x={-10} y={-10} width={20} height={20} rx={4} fill="#1e293b" stroke="#3b82f6" strokeWidth={1.2} />
-            <text textAnchor="middle" fontSize={12} fill="#93c5fd" dy={4.5}>↻</text>
+            <rect x={-10} y={-10} width={20} height={20} rx={4} fill="#1e293b" stroke="#1e3a5f" strokeWidth={1} />
+            {/* RotateCw lucide SVG (size 13, centered) */}
+            <g transform="translate(-6.5,-6.5)" stroke="#3b82f6" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" fill="none">
+              <polyline points="23 4 23 10 17 10" transform="scale(0.54) translate(0,0)" />
+              <path d="M 7 11.5 A 5 5 0 1 0 8.5 7" transform="scale(0.54)" />
+              <polyline points="12.5 1 12.5 4.5 9 4.5" transform="scale(0.54)" />
+            </g>
+            {/* Простая стрелка поворота */}
+            <text textAnchor="middle" fontSize={11} fill="#3b82f6" dy={4}>↻</text>
           </g>
-          {/* Удаление */}
-          <g transform={`translate(${size.width/2+36},${-size.height/2-10})`}
+          {/* Удаление — правый верхний угол */}
+          <g transform={`translate(${size.width/2+10},${-size.height/2-10})`}
             onClick={e => { e.stopPropagation(); onDelete(node.id); }}
             style={{ cursor: 'pointer' }}>
-            <rect x={-10} y={-10} width={20} height={20} rx={4} fill="#1e293b" stroke="#ef4444" strokeWidth={1.2} />
-            {/* Иконка корзины (lucide-style) */}
-            <g stroke="#ef4444" strokeWidth={1.3} strokeLinecap="round" strokeLinejoin="round" fill="none">
-              <line x1={-5} y1={-4.5} x2={5} y2={-4.5} />
-              <line x1={-3} y1={-4.5} x2={-3} y2={-6} />
-              <line x1={3} y1={-4.5} x2={3} y2={-6} />
-              <rect x={-4.5} y={-3.5} width={9} height={9} rx={1} />
-              <line x1={-2} y1={-1} x2={-2} y2={3} />
-              <line x1={0} y1={-1} x2={0} y2={3} />
-              <line x1={2} y1={-1} x2={2} y2={3} />
+            <rect x={-10} y={-10} width={20} height={20} rx={4} fill="#1e293b" stroke="#1e3a5f" strokeWidth={1} />
+            {/* Trash2 lucide SVG (size 13, centered) */}
+            <g transform="translate(-6.5,-6.5) scale(0.54)" stroke="#f87171" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" fill="none">
+              <polyline points="3 6 5 6 21 6" />
+              <path d="M 19 6 L 18.1 20 A 2 2 0 0 1 16.1 22 H 7.9 A 2 2 0 0 1 5.9 20 L 5 6" />
+              <path d="M 9 6 L 9 2 L 15 2 L 15 6" />
+              <line x1={10} y1={11} x2={10} y2={17} />
+              <line x1={14} y1={11} x2={14} y2={17} />
             </g>
           </g>
         </>
