@@ -292,6 +292,8 @@ const GraphCanvas = forwardRef(function GraphCanvas({
   const [pan,  setPan]  = useState(null);
   const [dragOver, setDragOver] = useState(false);
   const [expandedEdges, setExpandedEdges] = useState(new Set());
+  const [guides, setGuides] = useState({ x: null, y: null });
+  const guidesTimerRef = useRef(null);
 
   const toggleEdgeExpand = useCallback((edgeId) => {
     setExpandedEdges(prev => {
@@ -360,6 +362,9 @@ const GraphCanvas = forwardRef(function GraphCanvas({
 
     const movingNode = { ...nodeMap[drag.id], x: nx, y: ny };
     const movingConfig = NODE_PORT_CONFIG[movingNode.type];
+    let newGuideX = null;
+    let newGuideY = null;
+
     if (movingConfig) {
       outer: for (const [myPortId] of Object.entries(movingConfig)) {
         const myPos = getPortAbsPos(movingNode, myPortId);
@@ -369,24 +374,53 @@ const GraphCanvas = forwardRef(function GraphCanvas({
           const otherConfig = NODE_PORT_CONFIG[other.type];
           if (!otherConfig) continue;
           for (const [otherPortId] of Object.entries(otherConfig)) {
-            if (usedPorts.has(`${other.id}:${otherPortId}`) && !usedPorts.has(`${drag.id}:${myPortId}`)) continue;
             const oPos = getPortAbsPos(other, otherPortId);
             if (!oPos) continue;
             const dist = Math.hypot(myPos.x - oPos.x, myPos.y - oPos.y);
             if (dist < PORT_SNAP_R) {
               nx = nx + (oPos.x - myPos.x);
               ny = ny + (oPos.y - myPos.y);
+              newGuideX = oPos.x;
+              newGuideY = oPos.y;
               break outer;
+            }
+          }
+        }
+      }
+
+      // Если не сделали snap, ищем частичные совпадения по X или Y
+      if (newGuideX === null && newGuideY === null) {
+        const GUIDE_R = 8;
+        for (const [myPortId] of Object.entries(movingConfig)) {
+          const myPos = getPortAbsPos(movingNode, myPortId);
+          if (!myPos) continue;
+          for (const other of nodes) {
+            if (other.id === drag.id) continue;
+            const otherConfig = NODE_PORT_CONFIG[other.type];
+            if (!otherConfig) continue;
+            for (const [otherPortId] of Object.entries(otherConfig)) {
+              const oPos = getPortAbsPos(other, otherPortId);
+              if (!oPos) continue;
+              if (newGuideX === null && Math.abs(myPos.x - oPos.x) < GUIDE_R) newGuideX = oPos.x;
+              if (newGuideY === null && Math.abs(myPos.y - oPos.y) < GUIDE_R) newGuideY = oPos.y;
             }
           }
         }
       }
     }
 
+    if (guidesTimerRef.current) clearTimeout(guidesTimerRef.current);
+    setGuides({ x: newGuideX, y: newGuideY });
+
     onNodeMove(drag.id, nx, ny);
   }, [pan, drag, vp, nodes, onNodeMove, usedPorts, nodeMap]);
 
-  const handleMouseUp = useCallback(() => { setPan(null); setDrag(null); }, []);
+  const handleMouseUp = useCallback(() => {
+    setPan(null);
+    setDrag(null);
+    if (guidesTimerRef.current) clearTimeout(guidesTimerRef.current);
+    guidesTimerRef.current = setTimeout(() => setGuides({ x: null, y: null }), 400);
+  }, []);
 
   const startDrag = useCallback((e, id) => {
     e.stopPropagation();
@@ -487,6 +521,18 @@ const GraphCanvas = forwardRef(function GraphCanvas({
             onRotate={onRotate}
           />
         ))}
+
+        {/* Слой 3.5: направляющие линии (snap guides) */}
+        {guides.x !== null && (
+          <line x1={guides.x} y1={-10000} x2={guides.x} y2={10000}
+            stroke="#4ade80" strokeWidth={0.8} strokeDasharray="4 4" opacity={0.8}
+            style={{ pointerEvents: 'none' }} />
+        )}
+        {guides.y !== null && (
+          <line x1={-10000} y1={guides.y} x2={10000} y2={guides.y}
+            stroke="#4ade80" strokeWidth={0.8} strokeDasharray="4 4" opacity={0.8}
+            style={{ pointerEvents: 'none' }} />
+        )}
 
         {/* Слой 3: чипсины труб — поверх всех узлов */}
         {edges.map(edge => {
