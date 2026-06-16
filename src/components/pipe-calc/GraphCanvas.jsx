@@ -168,9 +168,11 @@ function ElbowSymbol({ sel }) {
   );
 }
 
-function RadiatorSymbol({ sel, props, res }) {
+function RadiatorSymbol({ sel, props, res, rot }) {
   const s = sel ? '#f87171' : '#ef4444';
   const w = 100, h = 40;
+  // Контр-поворот текста: чтобы он всегда оставался горизонтальным
+  const textRot = -(rot || 0);
   return (
     <g>
       {/* Корпус радиатора */}
@@ -180,8 +182,16 @@ function RadiatorSymbol({ sel, props, res }) {
       ))}
       {/* Трубка подключения сверху по центру */}
       <line x1={0} y1={-h/2} x2={0} y2={-20} stroke={s} strokeWidth={2} opacity={0.8} />
-      {props?.roomName && <text y={-h/2-22} textAnchor="middle" fontSize={9} fill="#94a3b8" fontWeight="600">{props.roomName}</text>}
-      {res?.flowRate != null && <text y={h/2+12} textAnchor="middle" fontSize={7} fill="#34d399">Q={res.flowRate.toFixed(2)} л/мин / {(res.flowRate * 0.06).toFixed(3)} м³/ч</text>}
+      {props?.roomName && (
+        <text transform={`rotate(${textRot})`} y={-h/2-22} textAnchor="middle" fontSize={9} fill="#94a3b8" fontWeight="600">
+          {props.roomName}
+        </text>
+      )}
+      {res?.flowRate != null && (
+        <text transform={`rotate(${textRot})`} y={h/2+12} textAnchor="middle" fontSize={7} fill="#34d399">
+          Q={res.flowRate.toFixed(2)} л/мин / {(res.flowRate * 0.06).toFixed(3)} м³/ч
+        </text>
+      )}
     </g>
   );
 }
@@ -261,7 +271,7 @@ function GraphNode({ node, sel, res, usedPorts, errorPorts, cappedPorts, inPorts
         {node.type === 'pump'     && <PumpSymbol     sel={sel} res={res} />}
         {node.type === 'tee'      && <TeeSymbol      sel={sel} />}
         {node.type === 'elbow'    && <ElbowSymbol    sel={sel} />}
-        {node.type === 'radiator' && <RadiatorSymbol sel={sel} props={node.props} res={res} />}
+        {node.type === 'radiator' && <RadiatorSymbol sel={sel} props={node.props} res={res} rot={rot} />}
       </g>
 
       {/* Порты */}
