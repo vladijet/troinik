@@ -438,9 +438,19 @@ const GraphCanvas = forwardRef(function GraphCanvas({
           if (newGuideX === null && matchX) newGuideX = portPos.x;
           if (newGuideY === null && matchY) newGuideY = portPos.y;
         } else {
-          // Для тройников, углов и др.: вспомогательная линия по центру узла
-          if (newGuideX === null && Math.abs(nx - other.x) < GUIDE_R) newGuideX = other.x;
-          if (newGuideY === null && Math.abs(ny - other.y) < GUIDE_R) newGuideY = other.y;
+          // Для тройников, углов и др.: сравниваем центр other с портами перетаскиваемого узла
+          // (если перетаскиваемый — радиатор, используем его порт, иначе центр)
+          const movingIsRadiator = movingNode.type === 'radiator';
+          if (movingIsRadiator) {
+            const portPos = getPortAbsPos(movingNode, 'port');
+            if (portPos) {
+              if (newGuideX === null && Math.abs(portPos.x - other.x) < GUIDE_R) newGuideX = other.x;
+              if (newGuideY === null && Math.abs(portPos.y - other.y) < GUIDE_R) newGuideY = other.y;
+            }
+          } else {
+            if (newGuideX === null && Math.abs(nx - other.x) < GUIDE_R) newGuideX = other.x;
+            if (newGuideY === null && Math.abs(ny - other.y) < GUIDE_R) newGuideY = other.y;
+          }
         }
       }
     }
