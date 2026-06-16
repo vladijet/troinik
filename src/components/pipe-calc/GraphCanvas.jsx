@@ -15,17 +15,29 @@ const PORT_SNAP_R = 24; // радиус магнитного захвата по
 
 function snapGrid(v) { return Math.round(v / SNAP) * SNAP; }
 
-// Кубическая кривая между двумя портами
+// Кубическая кривая между двумя портами — с отступом PORT_R от центра порта
+const PORT_R = 5; // радиус порта, трубы заканчиваются на его границе
+const DIR_VEC = { right: [1,0], left: [-1,0], down: [0,1], up: [0,-1] };
+
 function edgePath(fromNode, fromPortId, toNode, toPortId) {
   const a = getPortAbsPos(fromNode, fromPortId);
   const b = getPortAbsPos(toNode, toPortId);
   if (!a || !b) return '';
-  const dist = Math.max(36, Math.hypot(b.x - a.x, b.y - a.y) * 0.45);
+
+  // Смещаем начало и конец пути наружу от порта на PORT_R
+  const [adx, ady] = DIR_VEC[a.dir] || [1, 0];
+  const [bdx, bdy] = DIR_VEC[b.dir] || [-1, 0];
+  const ax = a.x + adx * PORT_R;
+  const ay = a.y + ady * PORT_R;
+  const bx = b.x + bdx * PORT_R;
+  const by = b.y + bdy * PORT_R;
+
+  const dist = Math.max(36, Math.hypot(bx - ax, by - ay) * 0.45);
   const ctrl = { right: [dist,0], left: [-dist,0], down: [0,dist], up: [0,-dist] };
   const [c1x,c1y] = ctrl[a.dir] || [dist,0];
   const revDir = { right:'left', left:'right', down:'up', up:'down' };
   const [c2x,c2y] = ctrl[revDir[b.dir]] || [-dist,0];
-  return `M${a.x},${a.y} C${a.x+c1x},${a.y+c1y} ${b.x+c2x},${b.y+c2y} ${b.x},${b.y}`;
+  return `M${ax},${ay} C${ax+c1x},${ay+c1y} ${bx+c2x},${by+c2y} ${bx},${by}`;
 }
 
 // Середина пути
@@ -542,12 +554,7 @@ const GraphCanvas = forwardRef(function GraphCanvas({
         <pattern id="dotGrid" patternUnits="userSpaceOnUse" x={gox} y={goy} width={gs} height={gs}>
           <circle cx={dotR} cy={dotR} r={dotR} fill={GRID} />
         </pattern>
-        <marker id="arr" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
-          <path d="M0,0 L6,3 L0,6 Z" fill="#ef4444" opacity={0.7} />
-        </marker>
-        <marker id="arr-ret" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
-          <path d="M0,0 L6,3 L0,6 Z" fill="#3b82f6" opacity={0.7} />
-        </marker>
+
       </defs>
 
       <rect className="cbg" width="100%" height="100%" fill={BG} />
@@ -571,12 +578,10 @@ const GraphCanvas = forwardRef(function GraphCanvas({
               <path d={d} stroke="transparent" strokeWidth={20} fill="none" />
               <path d={d} stroke="#000" strokeWidth={7} fill="none" strokeLinecap="round" opacity={0.2} />
               <path d={d} stroke={returnColor} strokeWidth={isSel ? 2.5 : 1.8}
-                fill="none" strokeLinecap="round"
-                style={{ transform: 'translate(2px, 2px)' }}
-                markerEnd="url(#arr-ret)" />
+                fill="none" strokeLinecap="butt"
+                style={{ transform: 'translate(2px, 2px)' }} />
               <path d={d} stroke={supplyColor} strokeWidth={isSel ? 2.5 : 1.8}
-                fill="none" strokeLinecap="round"
-                markerEnd="url(#arr)" />
+                fill="none" strokeLinecap="butt" />
               {isSel && (
                 <motion.path
                   d={d} fill="none" strokeLinecap="round"
