@@ -239,15 +239,12 @@ function GraphNode({ node, sel, res, usedPorts, errorPorts, cappedPorts, inPorts
           <g transform={`translate(${-size.width/2-10},${-size.height/2-10})`}
             onClick={e => { e.stopPropagation(); onRotate(node.id); }}
             style={{ cursor: 'pointer' }}>
-            <rect x={-10} y={-10} width={20} height={20} rx={4} fill="#1e293b" stroke="#1e3a5f" strokeWidth={1} />
-            {/* RotateCw lucide SVG (size 13, centered) */}
-            <g transform="translate(-6.5,-6.5)" stroke="#3b82f6" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" fill="none">
-              <polyline points="23 4 23 10 17 10" transform="scale(0.54) translate(0,0)" />
-              <path d="M 7 11.5 A 5 5 0 1 0 8.5 7" transform="scale(0.54)" />
-              <polyline points="12.5 1 12.5 4.5 9 4.5" transform="scale(0.54)" />
+            <rect x={-10} y={-10} width={20} height={20} rx={4} fill="#1e293b" stroke="#3b82f6" strokeWidth={1} />
+            {/* Чёткая иконка поворота: дуга со стрелкой */}
+            <g fill="none" stroke="#3b82f6" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+              <path d="M -4,0 A 5 5 0 1 1 0,5" />
+              <polyline points="0,5 0,2 3,5" />
             </g>
-            {/* Простая стрелка поворота */}
-            <text textAnchor="middle" fontSize={11} fill="#3b82f6" dy={4}>↻</text>
           </g>
           {/* Удаление — правый верхний угол */}
           <g transform={`translate(${size.width/2+10},${-size.height/2-10})`}
@@ -497,7 +494,11 @@ const GraphCanvas = forwardRef(function GraphCanvas({
     const { x: sx, y: sy } = getSVG(e);
     const cx = snapGrid((sx - vp.x) / vp.scale);
     const cy = snapGrid((sy - vp.y) / vp.scale);
-    onDropElement(type, cx, cy);
+    const newId = onDropElement(type, cx, cy);
+    // Сразу запускаем drag для нового элемента, чтобы вспомогательные линии работали
+    if (newId) {
+      setDrag({ id: newId, ox: 0, oy: 0 });
+    }
   }, [vp, onDropElement]);
 
   return (

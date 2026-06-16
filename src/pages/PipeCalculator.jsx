@@ -414,6 +414,7 @@ export default function PipeCalculator() {
               setSelectedId(n.id);
               setResults(null);
               setValidation(null);
+              return n.id;
             }}
             nodes={nodes}
             edges={edges}
