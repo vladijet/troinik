@@ -425,10 +425,9 @@ const GraphCanvas = forwardRef(function GraphCanvas({
         if (other.id === drag.id) continue;
 
         if (other.type === 'radiator') {
-          // Для радиатора: направляющая проходит через его порт
+          // Для радиатора: вспомогательная линия проходит строго через порт
           const portPos = getPortAbsPos(other, 'port');
           if (!portPos) continue;
-          // Проверяем совпадение порта радиатора с портом перетаскиваемого узла
           let matchX = false, matchY = false;
           for (const pid of movingPortIds) {
             const mp = getPortAbsPos(movingNode, pid);
@@ -436,13 +435,10 @@ const GraphCanvas = forwardRef(function GraphCanvas({
             if (!matchX && Math.abs(mp.x - portPos.x) < GUIDE_R) matchX = true;
             if (!matchY && Math.abs(mp.y - portPos.y) < GUIDE_R) matchY = true;
           }
-          // Также проверяем центр перетаскиваемого узла
-          if (!matchX && Math.abs(nx - portPos.x) < GUIDE_R) matchX = true;
-          if (!matchY && Math.abs(ny - portPos.y) < GUIDE_R) matchY = true;
-
           if (newGuideX === null && matchX) newGuideX = portPos.x;
           if (newGuideY === null && matchY) newGuideY = portPos.y;
         } else {
+          // Для тройников, углов и др.: вспомогательная линия по центру узла
           if (newGuideX === null && Math.abs(nx - other.x) < GUIDE_R) newGuideX = other.x;
           if (newGuideY === null && Math.abs(ny - other.y) < GUIDE_R) newGuideY = other.y;
         }
