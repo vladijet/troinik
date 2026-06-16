@@ -24,6 +24,7 @@ import { calcHydraulicGraph } from '@/lib/hydraulicCalcEngine';
 import { PIPE_TYPES } from '@/lib/pipeStandards';
 import ResultsDialog from '@/components/pipe-calc/ResultsDialog';
 import ResetConfirmDialog from '@/components/pipe-calc/ResetConfirmDialog';
+import AboutDialog from '@/components/pipe-calc/AboutDialog';
 
 const DEFAULT_PARAMS = { pipeType: 'ppr_pn20', tSupply: 75, tReturn: 60, tAir: 22 };
 
@@ -60,6 +61,7 @@ export default function PipeCalculator() {
     saved?.globalParams || DEFAULT_PARAMS
   );
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [showAbout, setShowAbout] = useState(false);
 
   // Автосохранение при каждом изменении графа
   useEffect(() => {
@@ -371,6 +373,8 @@ export default function PipeCalculator() {
         onCancel={() => setShowResetConfirm(false)}
       />
 
+      <AboutDialog open={showAbout} onClose={() => setShowAbout(false)} />
+
       <ResultsDialog
         open={showResults}
         onClose={() => setShowResults(false)}
@@ -382,6 +386,19 @@ export default function PipeCalculator() {
         globalParams={globalParams}
         canvasRef={canvasRef}
       />
+
+      {/* Кнопка О нас */}
+      <button
+        onClick={() => setShowAbout(true)}
+        style={{
+          position: 'fixed', bottom: 16, left: 16, zIndex: 50,
+          background: '#1e293b', border: '1px solid #1e3a5f',
+          color: '#475569', borderRadius: 6, padding: '5px 12px',
+          fontSize: 11, cursor: 'pointer',
+        }}
+      >
+        О нас
+      </button>
 
       <div className="flex flex-1 overflow-hidden">
         <ElementPanel onAddElement={handleAddElement} />
