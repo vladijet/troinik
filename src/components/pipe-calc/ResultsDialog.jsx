@@ -62,11 +62,8 @@ const FITTING_NAMES = {
   stainless:     { tee: 'Тройник пресс Нерж. сталь', elbow: 'Угол 90° пресс Нерж. сталь' },
 };
 
-// Соединительные элементы на каждое подключение трубы к фитингу (тройник/угол)
-const CONNECTOR_NAMES = {
-  pex:           'Надвижная гильза PEX (на аксиальное соединение)',
-  metal_plastic: 'Пресс-соединение (цанговое) PEX-Al-PEX',
-};
+// Надвижные гильзы — только для PEX, по диаметру каждого порта фитинга
+// Для металлопластика гильзы не нужны — включены в состав фитинга
 
 function countNodeEdges(nodeId, edges) {
   return (edges || []).filter(e => e.fromNodeId === nodeId || e.toNodeId === nodeId).length;
@@ -118,15 +115,22 @@ function buildSpecification(nodes, edges, results, pipeType) {
   Object.entries(teeGroups).forEach(([name, qty]) => items.push({ name, qty, unit: 'шт' }));
   Object.entries(elbowGroups).forEach(([name, qty]) => items.push({ name, qty, unit: 'шт' }));
 
-  // Соединительные элементы для PEX (надвижные гильзы) и металлопластика (пресс-соединения):
-  // по одному на каждое подключение трубы к тройнику/углу.
-  const connectorName = CONNECTOR_NAMES[pipeType];
-  if (connectorName) {
-    let connectorCount = 0;
+  // Надвижные гильзы PEX — по диаметру каждого подключения к тройнику/углу
+  // Для metal_plastic гильзы не добавляем (включены в стоимость фитинга)
+  if (pipeType === 'pex') {
+    const sleeveByDia = {};
     (nodes || []).filter(n => n.type === 'tee' || n.type === 'elbow').forEach(n => {
-      connectorCount += countNodeEdges(n.id, edges);
+      const diameters = getNodeEdgeDiameters(n.id, edges, results);
+      diameters.forEach(dia => {
+        const key = dia;
+        sleeveByDia[key] = (sleeveByDia[key] || 0) + 1;
+      });
     });
-    if (connectorCount > 0) items.push({ name: connectorName, qty: connectorCount, unit: 'шт' });
+    Object.entries(sleeveByDia)
+      .sort(([a], [b]) => Number(b) - Number(a))
+      .forEach(([dia, qty]) => {
+        items.push({ name: `Надвижная гильза PEX ${dia} мм`, qty, unit: 'шт' });
+      });
   }
 
   return items;
@@ -328,11 +332,44 @@ export default function ResultsDialog({ open, onClose, results, pumpHead, pumpFl
       if (svgEl) {
         const { imgData, aspectRatio } = await captureGraphCanvas(svgEl);
 
-        // Заголовок страницы
-        doc.setFont(font, 'bold');
-        doc.setFontSize(14);
-        doc.setTextColor(30, 58, 95);
-        doc.text('HydroCalc', MARGIN, 10);
+        // Заголовок страницы — логотип Тройник
+        try {
+          const logoResp = await fetch('https://media.base44.com/images/public/6a2273e3e4eb03727e3a6619/d40f770e2_troinik_logo_black.svg');
+          const logoSvgText = await logoResp.text();
+          const blob = new Blob([logoSvgText], { type: 'image/svg+xml' });
+          const url = URL.createObjectURL(blob);
+          await new Promise((resolve) => {
+            const img = new window.Image();
+            img.onload = () => {
+              const canvas = document.createElement('canvas');
+              canvas.width = img.width || 300;
+              canvas.height = img.height || 80;
+              const ctx2 = canvas.getContext('2d');
+              ctx2.drawImage(img, 0, 0);
+              const pngData = canvas.toDataURL('image/png');
+              const logoH = 8;
+              const logoW = logoH * (canvas.width / canvas.height);
+              doc.addImage(pngData, 'PNG', MARGIN, 5, logoW, logoH);
+              URL.revokeObjectURL(url);
+              resolve();
+            };
+            img.onerror = () => {
+              // Fallback: текст
+              doc.setFont(font, 'bold');
+              doc.setFontSize(14);
+              doc.setTextColor(30, 58, 95);
+              doc.text('Troinik', MARGIN, 10);
+              URL.revokeObjectURL(url);
+              resolve();
+            };
+            img.src = url;
+          });
+        } catch {
+          doc.setFont(font, 'bold');
+          doc.setFontSize(14);
+          doc.setTextColor(30, 58, 95);
+          doc.text('Troinik', MARGIN, 10);
+        }
         doc.setFont(font, 'normal');
         doc.setFontSize(8);
         doc.setTextColor(100, 116, 139);
@@ -357,11 +394,11 @@ export default function ResultsDialog({ open, onClose, results, pumpHead, pumpFl
       doc.addPage();
       let y = 14;
 
-      // Заголовок
+      // Заголовок стр.2+
       doc.setFont(font, 'bold');
       doc.setFontSize(13);
       doc.setTextColor(30, 58, 95);
-      doc.text('HydroCalc', MARGIN, y);
+      doc.text('Troinik | HydroCalc', MARGIN, y);
       y += 8;
 
       // Две колонки: левая — параметры системы, правая — насос
@@ -489,7 +526,11 @@ export default function ResultsDialog({ open, onClose, results, pumpHead, pumpFl
         doc.text(`Page ${i} of ${totalPages}`, W / 2, H_PAGE - 4, { align: 'center' });
       }
 
-      doc.save('hydrocalc-results.pdf');
+      const now = new Date();
+      const dd = String(now.getDate()).padStart(2, '0');
+      const mm = String(now.getMonth() + 1).padStart(2, '0');
+      const yyyy = now.getFullYear();
+      doc.save(`Troinik_results_${dd}_${mm}_${yyyy}.pdf`);
     } finally {
       setExporting(false);
     }

@@ -64,5 +64,9 @@ export function exportResultsToExcel({
   ws3['!cols'] = [{ wch: 28 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 12 }];
   XLSX.utils.book_append_sheet(wb, ws3, 'Детализация');
 
-  XLSX.writeFile(wb, 'hydrocalc-results.xlsx');
+  const now = new Date();
+  const dd = String(now.getDate()).padStart(2, '0');
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const yyyy = now.getFullYear();
+  XLSX.writeFile(wb, `Troinik_results_${dd}_${mm}_${yyyy}.xlsx`);
 }
