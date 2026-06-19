@@ -5,9 +5,10 @@
 import { useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Download, ExternalLink, Loader2 } from 'lucide-react';
+import { Download, ExternalLink, Loader2, FileSpreadsheet } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
+import { exportResultsToExcel } from '@/lib/excelExport';
 
 const D = {
   bg: '#0f172a', card: '#1e293b', border: '#1e3a5f',
@@ -61,6 +62,16 @@ const FITTING_NAMES = {
   stainless:     { tee: 'Тройник пресс Нерж. сталь', elbow: 'Угол 90° пресс Нерж. сталь' },
 };
 
+// Соединительные элементы на каждое подключение трубы к фитингу (тройник/угол)
+const CONNECTOR_NAMES = {
+  pex:           'Надвижная гильза PEX (на аксиальное соединение)',
+  metal_plastic: 'Пресс-соединение (цанговое) PEX-Al-PEX',
+};
+
+function countNodeEdges(nodeId, edges) {
+  return (edges || []).filter(e => e.fromNodeId === nodeId || e.toNodeId === nodeId).length;
+}
+
 function getNodeEdgeDiameters(nodeId, edges, results) {
   return (edges || [])
     .filter(e => e.fromNodeId === nodeId || e.toNodeId === nodeId)
@@ -106,6 +117,18 @@ function buildSpecification(nodes, edges, results, pipeType) {
   }
   Object.entries(teeGroups).forEach(([name, qty]) => items.push({ name, qty, unit: 'шт' }));
   Object.entries(elbowGroups).forEach(([name, qty]) => items.push({ name, qty, unit: 'шт' }));
+
+  // Соединительные элементы для PEX (надвижные гильзы) и металлопластика (пресс-соединения):
+  // по одному на каждое подключение трубы к тройнику/углу.
+  const connectorName = CONNECTOR_NAMES[pipeType];
+  if (connectorName) {
+    let connectorCount = 0;
+    (nodes || []).filter(n => n.type === 'tee' || n.type === 'elbow').forEach(n => {
+      connectorCount += countNodeEdges(n.id, edges);
+    });
+    if (connectorCount > 0) items.push({ name: connectorName, qty: connectorCount, unit: 'шт' });
+  }
+
   return items;
 }
 
@@ -309,11 +332,11 @@ export default function ResultsDialog({ open, onClose, results, pumpHead, pumpFl
         doc.setFont(font, 'bold');
         doc.setFontSize(14);
         doc.setTextColor(30, 58, 95);
-        doc.text('HydroCalc - Schema', W / 2, 10, { align: 'center' });
+        doc.text('HydroCalc', MARGIN, 10);
         doc.setFont(font, 'normal');
         doc.setFontSize(8);
         doc.setTextColor(100, 116, 139);
-        doc.text(`Date: ${new Date().toLocaleDateString('ru-RU')}`, W / 2, 16, { align: 'center' });
+        doc.text(`Date: ${new Date().toLocaleDateString('ru-RU')}`, MARGIN, 16);
 
         // Вписываем схему полностью на страницу с сохранением пропорций
         const availW = W - MARGIN * 2;
@@ -338,7 +361,7 @@ export default function ResultsDialog({ open, onClose, results, pumpHead, pumpFl
       doc.setFont(font, 'bold');
       doc.setFontSize(13);
       doc.setTextColor(30, 58, 95);
-      doc.text('HydroCalc - Results', W / 2, y, { align: 'center' });
+      doc.text('HydroCalc', MARGIN, y);
       y += 8;
 
       // Две колонки: левая — параметры системы, правая — насос
@@ -463,13 +486,21 @@ export default function ResultsDialog({ open, onClose, results, pumpHead, pumpFl
         doc.setFont(font, 'normal');
         doc.setFontSize(7);
         doc.setTextColor(100, 116, 139);
-        doc.text(`Page ${i} of ${totalPages}  -  HydroCalc  -  shinhoopump.ru`, W / 2, H_PAGE - 4, { align: 'center' });
+        doc.text(`Page ${i} of ${totalPages}`, W / 2, H_PAGE - 4, { align: 'center' });
       }
 
       doc.save('hydrocalc-results.pdf');
     } finally {
       setExporting(false);
     }
+  };
+
+  const handleDownloadExcel = () => {
+    exportResultsToExcel({
+      results, nodes, edges, globalParams, specification, pipeSpec,
+      pumpHead: H, pumpFlow: Q, recommended,
+      pipeTypeLabel: PIPE_TYPE_LABELS[globalParams?.pipeType] || globalParams?.pipeType || '-',
+    });
   };
 
   return (
@@ -556,6 +587,10 @@ export default function ResultsDialog({ open, onClose, results, pumpHead, pumpFl
             style={{ background: D.accent }}>
             {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
             {exporting ? 'Генерация PDF...' : 'Скачать PDF'}
+          </Button>
+          <Button onClick={handleDownloadExcel} disabled={exporting} className="flex-1 gap-2"
+            style={{ background: D.green, color: '#052e1a' }}>
+            <FileSpreadsheet className="w-4 h-4" /> Excel
           </Button>
           <Button variant="outline" onClick={onClose} className="text-xs"
             style={{ borderColor: D.border, color: D.muted, background: 'transparent' }}>
