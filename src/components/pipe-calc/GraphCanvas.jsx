@@ -183,6 +183,10 @@ function RadiatorSymbol({ sel, props, res, rot }) {
   const w = 100, h = 40;
   // Контр-поворот текста: чтобы он всегда оставался горизонтальным
   const textRot = -(rot || 0);
+  // При вертикальной ориентации легенда уходит вниз, за пределы корпуса
+  const isVertical = rot === 90 || rot === 270;
+  const nameY = isVertical ? w/2 + 10 : -h/2 - 22;
+  const flowY = isVertical ? w/2 + 22 : h/2 + 12;
   return (
     <g>
       {/* Корпус радиатора */}
@@ -193,12 +197,12 @@ function RadiatorSymbol({ sel, props, res, rot }) {
       {/* Трубка подключения сверху по центру */}
       <line x1={0} y1={-h/2} x2={0} y2={-20} stroke={s} strokeWidth={2} opacity={0.8} />
       {props?.roomName && (
-        <text transform={`rotate(${textRot})`} y={-h/2-22} textAnchor="middle" fontSize={9} fill="#94a3b8" fontWeight="600">
+        <text transform={`rotate(${textRot})`} y={nameY} textAnchor="middle" fontSize={9} fill="#94a3b8" fontWeight="600">
           {props.roomName}
         </text>
       )}
       {res?.flowRate != null && (
-        <text transform={`rotate(${textRot})`} y={h/2+12} textAnchor="middle" fontSize={7} fill="#34d399">
+        <text transform={`rotate(${textRot})`} y={flowY} textAnchor="middle" fontSize={7} fill="#34d399">
           Q={res.flowRate.toFixed(2)} л/мин / {(res.flowRate * 0.06).toFixed(3)} м³/ч
         </text>
       )}
