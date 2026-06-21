@@ -211,15 +211,20 @@ function RadiatorSymbol({ sel, props, res, rot }) {
 }
 
 // ─── Порт ─────────────────────────────────────────────────────────────────────
-function PortDot({ px, py, portId, nodeId, nodeType, isOpen, isError, isCapped, isIn, onPortClick }) {
-  const color = isError ? '#ef4444'
+function PortDot({ px, py, portId, nodeId, nodeType, isOpen, isError, isCapped, isIn, isPending, onPortClick }) {
+  const [hover, setHover] = useState(false);
+  const isFree = isOpen && !isCapped;
+
+  // Цвет: выбранный (pending) — золотой, hover на свободном — ярко-зелёный, иначе обычная логика
+  const color = isPending ? '#facc15'
+    : isError ? '#ef4444'
     : isCapped ? '#475569'
-    : isOpen ? '#4ade80'
+    : isFree ? (hover ? '#86efac' : '#4ade80')
     : '#1e3a5f';
-  const r = isOpen && !isCapped ? 6 : 4;
+  const r = isFree ? (isPending ? 7 : hover ? 7 : 6) : 4;
 
   // Метка порта: только для открытых незаглушённых портов tee/elbow
-  const showLabel = isOpen && !isCapped && (nodeType === 'tee' || nodeType === 'elbow');
+  const showLabel = isFree && (nodeType === 'tee' || nodeType === 'elbow');
   const label = isIn ? 'IN' : (portId === 'branch' ? 'BR' : 'OUT');
   const labelColor = isIn ? '#60a5fa' : portId === 'branch' ? '#34d399' : '#f59e0b';
 
@@ -228,10 +233,18 @@ function PortDot({ px, py, portId, nodeId, nodeType, isOpen, isError, isCapped, 
 
   return (
     <g transform={`translate(${px},${py})`}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
       onClick={e => { e.stopPropagation(); onPortClick(nodeId, portId); }}
-      style={{ cursor: 'pointer' }}>
-      {isOpen && !isCapped && (
-        <circle r={12} fill="none" stroke={isError ? '#ef4444' : '#4ade80'} strokeWidth={1.2} opacity={0.3} />
+      style={{ cursor: isFree || isCapped ? 'pointer' : 'default' }}>
+      {/* Кольцо-подсветка: для выбранного порта — пульсирующее золотое, для hover — зелёное */}
+      {isPending && (
+        <motion.circle r={13} fill="none" stroke="#facc15" strokeWidth={1.5}
+          initial={{ opacity: 0.6 }} animate={{ opacity: [0.6, 0.2, 0.6] }}
+          transition={{ duration: 1.2, repeat: Infinity }} />
+      )}
+      {isFree && !isPending && (
+        <circle r={hover ? 13 : 12} fill="none" stroke={isError ? '#ef4444' : '#4ade80'} strokeWidth={1.2} opacity={hover ? 0.6 : 0.3} />
       )}
       <circle r={r} fill={color} stroke={BG} strokeWidth={1} />
       {/* Заглушка: крестик */}
@@ -255,7 +268,7 @@ function PortDot({ px, py, portId, nodeId, nodeType, isOpen, isError, isCapped, 
 }
 
 // ─── Узел ─────────────────────────────────────────────────────────────────────
-function GraphNode({ node, sel, res, usedPorts, errorPorts, cappedPorts, inPorts, onMouseDown, onClick, onPortClick, onRotate, onDelete }) {
+function GraphNode({ node, sel, res, usedPorts, errorPorts, cappedPorts, inPorts, pendingPort, onMouseDown, onClick, onPortClick, onRotate, onDelete }) {
   const config = NODE_PORT_CONFIG[node.type];
   const size   = NODE_SIZE[node.type];
   if (!config) return null;
@@ -297,9 +310,10 @@ function GraphNode({ node, sel, res, usedPorts, errorPorts, cappedPorts, inPorts
         const isError = errorPorts.has(key);
         const isCapped = cappedPorts.has(key);
         const isIn = inPorts.has(key);
+        const isPending = pendingPort && pendingPort.nodeId === node.id && pendingPort.portId === pid;
         return (
-          <PortDot key={pid} px={rx} py={ry} portId={pid} nodeId={node.id} nodeType={node.type}
-            isOpen={isOpen} isError={isError} isCapped={isCapped} isIn={isIn} onPortClick={onPortClick} />
+        <PortDot key={pid} px={rx} py={ry} portId={pid} nodeId={node.id} nodeType={node.type}
+          isOpen={isOpen} isError={isError} isCapped={isCapped} isIn={isIn} isPending={isPending} onPortClick={onPortClick} />
         );
       })}
 
@@ -373,7 +387,7 @@ function buildEdgeNumbers(nodes, edges) {
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 const GraphCanvas = forwardRef(function GraphCanvas({
-  nodes, edges, selectedId, results, openPorts, cappedPorts, inPorts, pipeType,
+  nodes, edges, selectedId, results, openPorts, cappedPorts, inPorts, pipeType, pendingPort,
   onNodeMove, onNodeClick, onPortClick, onRotate, onEdgeClick, onDropElement, onDelete, onNodeDragStart,
 }, ref) {
   const svgRef = useRef(null);
@@ -656,6 +670,7 @@ const GraphCanvas = forwardRef(function GraphCanvas({
             errorPorts={errorPortSet}
             cappedPorts={cappedSet}
             inPorts={inPortSet}
+            pendingPort={pendingPort}
             onMouseDown={e => startDrag(e, node.id)}
             onClick={e => { e.stopPropagation(); onNodeClick(node.id); }}
             onPortClick={onPortClick}
