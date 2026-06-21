@@ -370,7 +370,7 @@ function buildEdgeNumbers(nodes, edges) {
 // ─── Main ─────────────────────────────────────────────────────────────────────
 const GraphCanvas = forwardRef(function GraphCanvas({
   nodes, edges, selectedId, results, openPorts, cappedPorts, inPorts, pipeType,
-  onNodeMove, onNodeClick, onPortClick, onRotate, onEdgeClick, onDropElement, onDelete,
+  onNodeMove, onNodeClick, onPortClick, onRotate, onEdgeClick, onDropElement, onDelete, onNodeDragStart,
 }, ref) {
   const svgRef = useRef(null);
   useImperativeHandle(ref, () => svgRef.current, []);
@@ -378,6 +378,7 @@ const GraphCanvas = forwardRef(function GraphCanvas({
   const [vp, setVp]   = useState({ x: 160, y: 200, scale: 1 });
   const [drag, setDrag] = useState(null);
   const [pan,  setPan]  = useState(null);
+  const dragSnapshottedRef = useRef(false);
   const [dragOver, setDragOver] = useState(false);
   const [expandedEdges, setExpandedEdges] = useState(new Set());
   const [guides, setGuides] = useState({ x: null, y: null });
@@ -522,8 +523,12 @@ const GraphCanvas = forwardRef(function GraphCanvas({
     if (guidesTimerRef.current) clearTimeout(guidesTimerRef.current);
     setGuides({ x: newGuideX, y: newGuideY });
 
+    if (!dragSnapshottedRef.current) {
+      onNodeDragStart?.(drag.id);
+      dragSnapshottedRef.current = true;
+    }
     onNodeMove(drag.id, nx, ny);
-  }, [pan, drag, vp, nodes, onNodeMove, usedPorts, nodeMap]);
+  }, [pan, drag, vp, nodes, onNodeMove, onNodeDragStart, usedPorts, nodeMap]);
 
   const handleMouseUp = useCallback(() => {
     setPan(null);
@@ -537,6 +542,7 @@ const GraphCanvas = forwardRef(function GraphCanvas({
     const cp = toCanvas(...Object.values(getSVG(e)));
     const n = nodes.find(n => n.id === id);
     setDrag({ id, ox: cp.x - n.x, oy: cp.y - n.y });
+    dragSnapshottedRef.current = false;
   }, [nodes, vp]);
 
   const gs = SNAP * vp.scale;

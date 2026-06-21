@@ -5,7 +5,7 @@
  */
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
-import { Play, BarChart2, Flame, RotateCcw, AlertCircle } from 'lucide-react';
+import { Play, BarChart2, Flame, RotateCcw, AlertCircle, Undo } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -25,6 +25,7 @@ import { PIPE_TYPES } from '@/lib/pipeStandards';
 import ResultsDialog from '@/components/pipe-calc/ResultsDialog';
 import ResetConfirmDialog from '@/components/pipe-calc/ResetConfirmDialog';
 import AboutDialog from '@/components/pipe-calc/AboutDialog';
+import { useHistory } from '@/lib/useHistory';
 
 const DEFAULT_PARAMS = { pipeType: 'ppr_pn20', tSupply: 75, tReturn: 60, tAir: 22 };
 
@@ -63,25 +64,55 @@ export default function PipeCalculator() {
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
 
+  // ─── История для Undo ──────────────────────────────────────────────────
+  const { pushSnapshot, undo, canUndo } = useHistory();
+  const stateRef = useRef({ nodes, edges, globalParams, cappedPorts });
+  stateRef.current = { nodes, edges, globalParams, cappedPorts };
+  const snapshot = useCallback(() => ({
+    nodes: stateRef.current.nodes,
+    edges: stateRef.current.edges,
+    globalParams: stateRef.current.globalParams,
+    cappedPorts: new Set(stateRef.current.cappedPorts),
+  }), []);
+
+  const handleUndo = useCallback(() => {
+    const prev = undo();
+    if (!prev) return;
+    setNodes(prev.nodes);
+    setEdges(prev.edges);
+    setGlobalParams(prev.globalParams);
+    setCappedPorts(prev.cappedPorts || new Set());
+    setSelectedId(null);
+    setPendingPort(null);
+    setResults(null);
+    setValidation(null);
+  }, [undo]);
+
   // Автосохранение при каждом изменении графа
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ nodes, edges, globalParams }));
   }, [nodes, edges, globalParams]);
   const deltaT = +((globalParams.tSupply + globalParams.tReturn) / 2 - globalParams.tAir).toFixed(1);
 
-  // Del → удалить выбранный
+  // Del → удалить выбранный, Ctrl+Z → отменить
   useEffect(() => {
     const h = (e) => {
+      if ((e.ctrlKey || e.metaKey) && ['z','Z','я','Я'].includes(e.key)) {
+        e.preventDefault();
+        handleUndo();
+        return;
+      }
       if (!['Delete','Backspace'].includes(e.key)) return;
       if (['INPUT','TEXTAREA'].includes(e.target.tagName)) return;
       if (selectedId) handleDelete(selectedId);
     };
     window.addEventListener('keydown', h);
     return () => window.removeEventListener('keydown', h);
-  }, [selectedId, edges]);
+  }, [selectedId, edges, handleUndo]);
 
   // ─── Добавить узел в свободную позицию ───────────────────────────────────
   const handleAddElement = useCallback((type) => {
+    pushSnapshot(snapshot());
     // Размещаем правее насоса, смещение по количеству уже добавленных
     const base = nodes.length * 60 + 320;
     const n = createNode(type, base, 300);
@@ -89,7 +120,7 @@ export default function PipeCalculator() {
     setSelectedId(n.id);
     setResults(null);
     setValidation(null);
-  }, [nodes]);
+  }, [nodes, pushSnapshot, snapshot]);
 
   // ─── Перемещение узла ────────────────────────────────────────────────────
   const handleNodeMove = useCallback((id, x, y) => {
@@ -107,6 +138,7 @@ export default function PipeCalculator() {
       if (!occupiedPorts.has(key)) {
         // Клик по заглушённому → снять заглушку
         if (cappedPorts.has(key)) {
+          pushSnapshot(snapshot());
           setCappedPorts(prev => { const next = new Set(prev); next.delete(key); return next; });
           setValidation(null);
           return;
@@ -121,6 +153,7 @@ export default function PipeCalculator() {
 
     // Второй клик на тот же порт → заглушить
     if (pendingPort.nodeId === nodeId && pendingPort.portId === portId) {
+      pushSnapshot(snapshot());
       setPendingPort(null);
       setCappedPorts(prev => { const next = new Set(prev); next.add(key); return next; });
       setValidation(null);
@@ -155,6 +188,7 @@ export default function PipeCalculator() {
       [fromNodeId, fromPortId, toNodeId, toPortId] = [toNodeId, toPortId, fromNodeId, fromPortId];
     }
 
+    pushSnapshot(snapshot());
     const newEdge = createEdge(fromNodeId, fromPortId, toNodeId, toPortId);
     setEdges(prev => [...prev, newEdge]);
     setPendingPort(null);
@@ -162,23 +196,26 @@ export default function PipeCalculator() {
     setResults(null);
     setValidation(null);
     toast.success('Труба соединена. Укажите длину в инспекторе.');
-  }, [pendingPort, edges, nodes]);
+  }, [pendingPort, edges, nodes, cappedPorts, pushSnapshot, snapshot]);
 
   // ─── Обновить свойства узла ──────────────────────────────────────────────
   const handleUpdateNode = useCallback((id, props) => {
+    pushSnapshot(snapshot());
     setNodes(prev => prev.map(n => n.id === id ? { ...n, props: { ...n.props, ...props } } : n));
     setResults(null);
-  }, []);
+  }, [pushSnapshot, snapshot]);
 
   // ─── Обновить свойства ребра (трубы) ────────────────────────────────────
   const handleUpdateEdge = useCallback((id, pipeProps) => {
+    pushSnapshot(snapshot());
     setEdges(prev => prev.map(e => e.id === id ? { ...e, pipeProps: { ...e.pipeProps, ...pipeProps } } : e));
     setResults(null);
-  }, []);
+  }, [pushSnapshot, snapshot]);
 
   // ─── Удалить выбранный элемент ───────────────────────────────────────────
   const handleDelete = useCallback((id) => {
     if (!id || id === 'pump-0') return;
+    pushSnapshot(snapshot());
     // Ребро?
     if (edges.find(e => e.id === id)) {
       setEdges(prev => prev.filter(e => e.id !== id));
@@ -190,13 +227,14 @@ export default function PipeCalculator() {
     setSelectedId(null);
     setResults(null);
     setValidation(null);
-  }, [edges]);
+  }, [edges, pushSnapshot, snapshot]);
 
   // ─── Поворот ────────────────────────────────────────────────────────────
   const handleRotate = useCallback((id) => {
+    pushSnapshot(snapshot());
     setNodes(prev => prev.map(n => n.id === id ? { ...n, rotation: ((n.rotation || 0) + 90) % 360 } : n));
     setResults(null);
-  }, []);
+  }, [pushSnapshot, snapshot]);
 
   // ─── Сброс ──────────────────────────────────────────────────────────────
   const handleResetConfirm = useCallback(() => {
@@ -303,6 +341,10 @@ export default function PipeCalculator() {
         </div>
 
         <div className="ml-auto flex items-center gap-2">
+          <Button variant="ghost" size="sm" onClick={handleUndo} disabled={!canUndo}
+            className="gap-1 text-xs h-8" style={{ color: canUndo ? '#94a3b8' : '#334155' }}>
+            <Undo className="w-3.5 h-3.5" /> Отменить
+          </Button>
           <Button variant="ghost" size="sm" onClick={handleReset}
             className="gap-1 text-xs h-8" style={{ color: '#64748b' }}>
             <RotateCcw className="w-3.5 h-3.5" /> Сбросить
@@ -408,7 +450,9 @@ export default function PipeCalculator() {
           tabIndex={0}>
           <GraphCanvas
             ref={canvasRef}
+            onNodeDragStart={() => pushSnapshot(snapshot())}
             onDropElement={(type, x, y) => {
+              pushSnapshot(snapshot());
               const n = createNode(type, x, y);
               setNodes(prev => [...prev, n]);
               setSelectedId(n.id);
