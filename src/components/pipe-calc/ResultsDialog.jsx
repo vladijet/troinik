@@ -323,7 +323,27 @@ export default function ResultsDialog({ open, onClose, results, pumpHead, pumpFl
       const W = 297;
       const H_PAGE = 210;
       const MARGIN = 14;
-      const font = 'helvetica'; // helvetica встроен в jsPDF, не требует загрузки
+
+      // Загружаем Roboto с поддержкой кириллицы
+      let font = 'helvetica';
+      try {
+        const fontResp = await fetch('https://fonts.gstatic.com/s/roboto/v30/KFOmCnqEu92Fr1Mu4mxKKTU1Kg.woff2');
+        // Используем PTSans из jsPDF плагина или загружаем через base64
+        // Альтернатива: грузим готовый TTF из CDN jsDelivr
+        const ttfResp = await fetch('https://cdn.jsdelivr.net/npm/@fontsource/roboto@5.0.8/files/roboto-cyrillic-400-normal.woff2');
+        // woff2 не поддерживается jsPDF напрямую — используем TTF
+        const ttfRoboto = await fetch('https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/fonts/Roboto/Roboto-Regular.ttf');
+        const ttfBuf = await ttfRoboto.arrayBuffer();
+        const ttfBase64 = btoa(String.fromCharCode(...new Uint8Array(ttfBuf)));
+        doc.addFileToVFS('Roboto-Regular.ttf', ttfBase64);
+        doc.addFont('Roboto-Regular.ttf', 'Roboto', 'normal');
+        const ttfBold = await fetch('https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/fonts/Roboto/Roboto-Medium.ttf');
+        const ttfBoldBuf = await ttfBold.arrayBuffer();
+        const ttfBoldBase64 = btoa(String.fromCharCode(...new Uint8Array(ttfBoldBuf)));
+        doc.addFileToVFS('Roboto-Medium.ttf', ttfBoldBase64);
+        doc.addFont('Roboto-Medium.ttf', 'Roboto', 'bold');
+        font = 'Roboto';
+      } catch { font = 'helvetica'; }
 
       // ══════════════════════════════════════════════════════════════════════
       // СТРАНИЦА 1 — Схема отопления
@@ -373,7 +393,7 @@ export default function ResultsDialog({ open, onClose, results, pumpHead, pumpFl
         doc.setFont(font, 'normal');
         doc.setFontSize(8);
         doc.setTextColor(100, 116, 139);
-        doc.text(`Date: ${new Date().toLocaleDateString('ru-RU')}`, MARGIN, 16);
+        doc.text(`Дата: ${new Date().toLocaleDateString('ru-RU')}`, MARGIN, 16);
 
         // Вписываем схему полностью на страницу с сохранением пропорций
         const availW = W - MARGIN * 2;
@@ -398,7 +418,7 @@ export default function ResultsDialog({ open, onClose, results, pumpHead, pumpFl
       doc.setFont(font, 'bold');
       doc.setFontSize(13);
       doc.setTextColor(30, 58, 95);
-      doc.text('Troinik | HydroCalc', MARGIN, y);
+      doc.text('Тройник | Гидравлический расчёт', MARGIN, y);
       y += 8;
 
       // Две колонки: левая — параметры системы, правая — насос
@@ -409,25 +429,25 @@ export default function ResultsDialog({ open, onClose, results, pumpHead, pumpFl
       doc.setFont(font, 'bold');
       doc.setFontSize(10);
       doc.setTextColor(30, 58, 95);
-      doc.text('System Parameters', MARGIN, y);
+      doc.text('Параметры системы', MARGIN, y);
       doc.line(MARGIN, y + 2, MARGIN + colW, y + 2);
 
       // Правая: Параметры насоса
-      doc.text('Pump Parameters', col2X, y);
+      doc.text('Параметры насоса', col2X, y);
       doc.line(col2X, y + 2, col2X + colW, y + 2);
       y += 8;
 
       const pipeTypeLabel = PIPE_TYPE_LABELS[globalParams?.pipeType] || globalParams?.pipeType || '-';
       const sysRows = [
-        ['Pipe material',    pipeTypeLabel],
-        ['Supply temp',      `${globalParams?.tSupply || '-'} C`],
-        ['Return temp',      `${globalParams?.tReturn || '-'} C`],
-        ['Air temp',         `${globalParams?.tAir || '-'} C`],
+        ['Материал труб',        pipeTypeLabel],
+        ['Температура подачи',   `${globalParams?.tSupply || '-'} °C`],
+        ['Температура обратки',  `${globalParams?.tReturn || '-'} °C`],
+        ['Температура воздуха',  `${globalParams?.tAir || '-'} °C`],
       ];
       const pumpRows = [
-        ['Head (H)',         `${H.toFixed(2)} m`],
-        ['Flow (Q)',         `${Q.toFixed(2)} l/min`],
-        ['Recommended',     recommended ? recommended.model : 'see catalog'],
+        ['Напор (H)',            `${H.toFixed(2)} м`],
+        ['Расход (Q)',           `${Q.toFixed(2)} л/мин`],
+        ['Рекомендуемый насос',  recommended ? recommended.model : 'см. каталог'],
       ];
 
       const rowH = 5.5;
@@ -451,23 +471,23 @@ export default function ResultsDialog({ open, onClose, results, pumpHead, pumpFl
       y = Math.max(y, y2) + 4;
 
       // Результаты по элементам
-      y = sectionTitle(doc, 'Element Results', y, W, font);
+      y = sectionTitle(doc, 'Результаты по элементам', y, W, font);
       Object.entries(results).forEach(([id, res]) => {
         if (y > H_PAGE - 16) { doc.addPage(); y = 14; }
         const node = nodes?.find(n => n.id === id);
         const edge = edges?.find(e => e.id === id);
         let label = id, valueStr = '';
         if (node) {
-          const roomName = toAscii(node.props?.roomName || id);
-          label = node.type === 'radiator' ? `Radiator: ${roomName}`
-            : node.type === 'pump' ? 'Pump'
-            : node.type === 'tee' ? 'Tee' : 'Elbow 90';
-          if (node.type === 'radiator') valueStr = `Q=${res.flowRate?.toFixed(2)} l/min, dP=${res.pressureLoss?.toFixed(0)} Pa`;
-          if (node.type === 'pump') valueStr = `H=${res.head?.toFixed(2)} m, Q=${res.flowRate?.toFixed(1)} l/min`;
-          if (['tee','elbow'].includes(node.type)) valueStr = `dP=${(res.pressureLossPass ?? res.pressureLoss ?? 0).toFixed(0)} Pa`;
+          const roomName = node.props?.roomName || id;
+          label = node.type === 'radiator' ? `Радиатор: ${roomName}`
+            : node.type === 'pump' ? 'Насос'
+            : node.type === 'tee' ? 'Тройник' : 'Угол 90°';
+          if (node.type === 'radiator') valueStr = `Q=${res.flowRate?.toFixed(2)} л/мин, ΔP=${res.pressureLoss?.toFixed(0)} Па`;
+          if (node.type === 'pump') valueStr = `H=${res.head?.toFixed(2)} м, Q=${res.flowRate?.toFixed(1)} л/мин`;
+          if (['tee','elbow'].includes(node.type)) valueStr = `ΔP=${(res.pressureLossPass ?? res.pressureLoss ?? 0).toFixed(0)} Па`;
         } else if (edge) {
-          label = `Pipe ${id}`;
-          valueStr = `${res.size?.outer}x${res.size?.wall}mm, ${res.velocity?.toFixed(2)} m/s, dP=${res.pressureLoss?.toFixed(0)} Pa`;
+          label = `Труба ${id}`;
+          valueStr = `${res.size?.outer}x${res.size?.wall}мм, ${res.velocity?.toFixed(2)} м/с, ΔP=${res.pressureLoss?.toFixed(0)} Па`;
         }
         y = tableRow(doc, label, valueStr, y, W, font);
       });
@@ -478,20 +498,20 @@ export default function ResultsDialog({ open, onClose, results, pumpHead, pumpFl
       doc.addPage();
       y = 14;
 
-      y = sectionTitle(doc, 'Bill of Materials', y, W, font);
+      y = sectionTitle(doc, 'Спецификация материалов', y, W, font);
 
       // Трубы
       pipeSpec.forEach(({ size, len }) => {
         if (y > H_PAGE - 16) { doc.addPage(); y = 14; }
-        y = tableRow(doc, toAscii(size), `${len.toFixed(1)} m`, y, W, font, [71, 85, 105], [30, 41, 59]);
+        y = tableRow(doc, size, `${len.toFixed(1)} м`, y, W, font, [71, 85, 105], [30, 41, 59]);
       });
 
       // Фитинги и оборудование
       specification.forEach(item => {
         if (item.qty <= 0) return;
         if (y > H_PAGE - 16) { doc.addPage(); y = 14; }
-        const name = toAscii(item.name);
-        const unit = toAscii(item.unit);
+        const name = item.name;
+        const unit = item.unit;
         const nameLines = doc.splitTextToSize(name, W - MARGIN * 2 - 50);
         doc.setFont(font, 'normal'); doc.setFontSize(9); doc.setTextColor(71, 85, 105);
         doc.text(nameLines, 18, y);
@@ -505,13 +525,13 @@ export default function ResultsDialog({ open, onClose, results, pumpHead, pumpFl
       // Рекомендация насоса
       if (recommended) {
         if (y > H_PAGE - 30) { doc.addPage(); y = 14; }
-        y = sectionTitle(doc, 'Recommended Pump - Shinhoo', y, W, font);
+        y = sectionTitle(doc, 'Рекомендуемый насос Shinhoo', y, W, font);
         doc.setFont(font, 'bold'); doc.setFontSize(11); doc.setTextColor(59, 130, 246);
         doc.text(recommended.model, 18, y); y += 6;
         doc.setFont(font, 'normal'); doc.setFontSize(9); doc.setTextColor(71, 85, 105);
-        doc.text(toAscii(recommended.desc), 18, y); y += 5;
-        doc.text(`Max head: ${recommended.H_max} m  |  Max flow: ${recommended.Q_max} l/min`, 18, y); y += 5;
-        doc.text(`Required (x1.2): H >= ${(H * 1.2).toFixed(1)} m, Q >= ${(Q * 1.2).toFixed(1)} l/min`, 18, y); y += 5;
+        doc.text(recommended.desc, 18, y); y += 5;
+        doc.text(`Макс. напор: ${recommended.H_max} м  |  Макс. расход: ${recommended.Q_max} л/мин`, 18, y); y += 5;
+        doc.text(`Требуется (запас 1.2): H >= ${(H * 1.2).toFixed(1)} м, Q >= ${(Q * 1.2).toFixed(1)} л/мин`, 18, y); y += 5;
         doc.setTextColor(59, 130, 246);
         doc.text(recommended.url, 18, y);
       }
@@ -523,7 +543,7 @@ export default function ResultsDialog({ open, onClose, results, pumpHead, pumpFl
         doc.setFont(font, 'normal');
         doc.setFontSize(7);
         doc.setTextColor(100, 116, 139);
-        doc.text(`Page ${i} of ${totalPages}`, W / 2, H_PAGE - 4, { align: 'center' });
+        doc.text(`Страница ${i} из ${totalPages}`, W / 2, H_PAGE - 4, { align: 'center' });
       }
 
       const now = new Date();
