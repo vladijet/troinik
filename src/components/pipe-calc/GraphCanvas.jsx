@@ -32,12 +32,24 @@ function edgePaths(fromNode, fromPortId, toNode, toPortId) {
   const a = getPortAbsPos(fromNode, fromPortId);
   const b = getPortAbsPos(toNode, toPortId);
   if (!a || !b) return { supply: '', ret: '', center: '' };
-  const dist = Math.max(36, Math.hypot(b.x - a.x, b.y - a.y) * 0.45);
+
+  // Укорачивание пути: труба заканчивается на границе порта, не заходя в центр
+  const PORT_OFFSET = 8;
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const len = Math.hypot(dx, dy) || 1;
+  // Защита от слишком коротких труб: отступ не более 1/4 длины
+  const offset = len < PORT_OFFSET * 2 ? len / 4 : PORT_OFFSET;
+  const ux = dx / len;
+  const uy = dy / len;
+  const ax = a.x + ux * offset, ay = a.y + uy * offset;
+  const bx = b.x - ux * offset, by = b.y - uy * offset;
+
+  const dist = Math.max(36, Math.hypot(bx - ax, by - ay) * 0.45);
   const ctrl = { right: [dist,0], left: [-dist,0], down: [0,dist], up: [0,-dist] };
   const [c1x,c1y] = ctrl[a.dir] || [dist,0];
   const revDir = { right:'left', left:'right', down:'up', up:'down' };
   const [c2x,c2y] = ctrl[revDir[b.dir]] || [-dist,0];
-  const ax = a.x, ay = a.y, bx = b.x, by = b.y;
   const ac1x = ax+c1x, ac1y = ay+c1y, bc2x = bx+c2x, bc2y = by+c2y;
   return {
     supply: offsetBezier(ax, ay, ac1x, ac1y, bc2x, bc2y, bx, by, -1.2),
@@ -580,31 +592,14 @@ const GraphCanvas = forwardRef(function GraphCanvas({
           <circle cx={dotR} cy={dotR} r={dotR} fill={GRID} />
         </pattern>
 
-        {/* Маска: всё белое (трубы видны), кроме кругов портов (чёрные = вырез) */}
-        <mask id="portMask">
-          <rect x="-100000" y="-100000" width="200000" height="200000" fill="white" />
-          {nodes.map(node => {
-            const config = NODE_PORT_CONFIG[node.type];
-            if (!config) return null;
-            const rot = node.rotation || 0;
-            const rad = rot * Math.PI / 180;
-            const cos = Math.round(Math.cos(rad) * 1e9) / 1e9;
-            const sin = Math.round(Math.sin(rad) * 1e9) / 1e9;
-            return Object.entries(config).map(([pid, p]) => {
-              const px = node.x + (p.x * cos - p.y * sin);
-              const py = node.y + (p.x * sin + p.y * cos);
-              return <circle key={`${node.id}-${pid}`} cx={px} cy={py} r={6} fill="black" />;
-            });
-          })}
-        </mask>
       </defs>
 
       <rect className="cbg" width="100%" height="100%" fill={BG} />
       <rect width="100%" height="100%" fill="url(#dotGrid)" />
 
       <g transform={`translate(${vp.x},${vp.y}) scale(${vp.scale})`}>
-        {/* Слой 1: трубы (пути) — маска скрывает концы труб внутри портов */}
-        <g mask="url(#portMask)">
+        {/* Слой 1: трубы (пути) — концы математически укорочены до границы порта */}
+        <g>
         {edges.map(edge => {
           const from = nodeMap[edge.fromNodeId];
           const to   = nodeMap[edge.toNodeId];
