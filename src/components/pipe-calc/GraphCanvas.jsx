@@ -432,6 +432,7 @@ const GraphCanvas = forwardRef(function GraphCanvas({
 
   const handleWheel = useCallback((e) => {
     e.preventDefault();
+    e.stopPropagation();
     if (e.ctrlKey || e.metaKey) {
       const { x, y } = getSVG(e);
       const s = Math.max(0.2, Math.min(4, vp.scale * (e.deltaY > 0 ? 0.9 : 1.1)));
@@ -440,6 +441,14 @@ const GraphCanvas = forwardRef(function GraphCanvas({
       setVp(v => ({ ...v, x: v.x - e.deltaX, y: v.y - e.deltaY }));
     }
   }, [vp]);
+
+  // Нативный non-passive слушатель wheel — чтобы preventDefault реально блокировал зум браузера
+  useEffect(() => {
+    const el = svgRef.current;
+    if (!el) return;
+    el.addEventListener('wheel', handleWheel, { passive: false });
+    return () => el.removeEventListener('wheel', handleWheel);
+  }, [handleWheel]);
 
   const handleMouseDown = useCallback((e) => {
     if (e.button !== 0) return;
@@ -587,9 +596,9 @@ const GraphCanvas = forwardRef(function GraphCanvas({
 
   return (
     <svg ref={svgRef} className="w-full h-full"
-      style={{ cursor: pan ? 'grabbing' : 'default', background: dragOver ? '#0f1f30' : BG }}
+      style={{ cursor: pan ? 'grabbing' : 'default', background: dragOver ? '#0f1f30' : BG, touchAction: 'none' }}
       onMouseDown={handleMouseDown} onMouseMove={handleMouseMove}
-      onMouseUp={handleMouseUp} onWheel={handleWheel}
+      onMouseUp={handleMouseUp}
       onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}>
 
       <defs>
