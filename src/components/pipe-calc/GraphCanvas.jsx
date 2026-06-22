@@ -230,6 +230,8 @@ function RadiatorSymbol({ sel, props, res, rot }) {
 // ─── Порт ─────────────────────────────────────────────────────────────────────
 function PortDot({ px, py, portId, nodeId, nodeType, isOpen, isError, isCapped, isIn, isPending, onPortClick }) {
   const [hover, setHover] = useState(false);
+  // Сброс hover при смене позиции порта — фиксит «залипание» подсветки после перетаскивания узла
+  useEffect(() => { setHover(false); }, [px, py]);
   const isFree = isOpen && !isCapped;
 
   // Цвет: выбранный (pending) или hover на свободном — золотой, иначе обычная логика
