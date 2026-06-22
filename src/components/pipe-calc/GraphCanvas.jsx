@@ -169,7 +169,7 @@ function TeeSymbol({ sel }) {
 }
 
 function ElbowSymbol({ sel }) {
-  const s = sel ? '#fbbf24' : '#f59e0b';
+  const s = sel ? '#34d399' : '#10b981';
   return (
     <g>
       <path d={`M -28,0 L 0,0 L 0,28`} fill="none" stroke={s} strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" />
@@ -215,54 +215,30 @@ function PortDot({ px, py, portId, nodeId, nodeType, isOpen, isError, isCapped, 
   const [hover, setHover] = useState(false);
   const isFree = isOpen && !isCapped;
 
-  // Цвет: выбранный (pending) — золотой, hover на свободном — ярко-зелёный, иначе обычная логика
-  const color = isPending ? '#facc15'
+  // Цвет: выбранный (pending) или hover на свободном — золотой, иначе обычная логика
+  const color = (isPending || (isFree && hover)) ? '#facc15'
     : isError ? '#ef4444'
     : isCapped ? '#475569'
-    : isFree ? (hover ? '#86efac' : '#4ade80')
+    : isFree ? '#4ade80'
     : '#1e3a5f';
-  const r = isFree ? (isPending ? 7 : hover ? 7 : 6) : 4;
-
-  // Метка порта: только для открытых незаглушённых портов tee/elbow
-  const showLabel = isFree && (nodeType === 'tee' || nodeType === 'elbow');
-  const label = isIn ? 'IN' : (portId === 'branch' ? 'BR' : 'OUT');
-  const labelColor = isIn ? '#60a5fa' : portId === 'branch' ? '#34d399' : '#f59e0b';
-
-  // Смещение метки (чтобы не перекрывала порт)
-  const labelOff = { x: px > 0 ? 12 : px < 0 ? -12 : 0, y: py > 0 ? 14 : py < 0 ? -14 : 0 };
+  const r = isFree ? (isPending || hover ? 7 : 6) : 4;
 
   return (
     <g transform={`translate(${px},${py})`}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       onClick={e => { e.stopPropagation(); onPortClick(nodeId, portId); }}
-      style={{ cursor: isFree || isCapped ? 'pointer' : 'default' }}>
-      {/* Кольцо-подсветка: для выбранного порта — пульсирующее золотое, для hover — зелёное */}
-      {isPending && (
+      style={{ cursor: isFree ? 'pointer' : 'default' }}>
+      {/* Кольцо-подсветка: для выбранного или hover — пульсирующее золотое */}
+      {(isPending || (isFree && hover)) && (
         <motion.circle r={13} fill="none" stroke="#facc15" strokeWidth={1.5}
           initial={{ opacity: 0.6 }} animate={{ opacity: [0.6, 0.2, 0.6] }}
           transition={{ duration: 1.2, repeat: Infinity }} />
       )}
-      {isFree && !isPending && (
-        <circle r={hover ? 13 : 12} fill="none" stroke={isError ? '#ef4444' : '#4ade80'} strokeWidth={1.2} opacity={hover ? 0.6 : 0.3} />
+      {isFree && !isPending && !hover && (
+        <circle r={12} fill="none" stroke={isError ? '#ef4444' : '#4ade80'} strokeWidth={1.2} opacity={0.3} />
       )}
       <circle r={r} fill={color} stroke={BG} strokeWidth={1} />
-      {/* Заглушка: крестик */}
-      {isCapped && (
-        <g stroke="#ef4444" strokeWidth={1.5} strokeLinecap="round">
-          <line x1={-4} y1={-4} x2={4} y2={4} />
-          <line x1={4} y1={-4} x2={-4} y2={4} />
-          <circle r={7} fill="none" stroke="#ef444488" strokeWidth={1} />
-        </g>
-      )}
-      {/* Метка IN/OUT/BR */}
-      {showLabel && (
-        <text x={labelOff.x} y={labelOff.y} textAnchor="middle"
-          fontSize={7} fontWeight="700" fill={labelColor}
-          style={{ pointerEvents: 'none', userSelect: 'none' }}>
-          {label}
-        </text>
-      )}
     </g>
   );
 }

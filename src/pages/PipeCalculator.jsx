@@ -136,28 +136,17 @@ export default function PipeCalculator() {
 
     if (!pendingPort) {
       if (!occupiedPorts.has(key)) {
-        // Клик по заглушённому → снять заглушку
-        if (cappedPorts.has(key)) {
-          pushSnapshot(snapshot());
-          setCappedPorts(prev => { const next = new Set(prev); next.delete(key); return next; });
-          setValidation(null);
-          return;
-        }
         // Начало соединения
         setPendingPort({ nodeId, portId });
         setSelectedId(nodeId);
-        toast.info('Выберите второй порт. Кликните по тому же порту ещё раз — чтобы заглушить его.');
+        toast.info('Выберите второй порт для подключения трубы.');
       }
       return;
     }
 
-    // Второй клик на тот же порт → заглушить
+    // Второй клик на тот же порт → отмена соединения
     if (pendingPort.nodeId === nodeId && pendingPort.portId === portId) {
-      pushSnapshot(snapshot());
       setPendingPort(null);
-      setCappedPorts(prev => { const next = new Set(prev); next.add(key); return next; });
-      setValidation(null);
-      toast.success('Порт заглушён. Кликните по крестику снова, чтобы снять заглушку.');
       return;
     }
 
@@ -196,7 +185,7 @@ export default function PipeCalculator() {
     setResults(null);
     setValidation(null);
     toast.success('Труба соединена. Укажите длину в инспекторе.');
-  }, [pendingPort, edges, nodes, cappedPorts, pushSnapshot, snapshot]);
+  }, [pendingPort, edges, nodes, pushSnapshot, snapshot]);
 
   // ─── Обновить свойства узла ──────────────────────────────────────────────
   const handleUpdateNode = useCallback((id, props) => {
