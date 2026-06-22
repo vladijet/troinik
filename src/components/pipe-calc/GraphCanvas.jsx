@@ -173,6 +173,9 @@ function TeeSymbol({ sel }) {
   const s = sel ? '#34d399' : '#10b981';
   return (
     <g>
+      {/* Заглушающий фоновый слой — перекрывает торцы труб под портом */}
+      <line x1={-28} y1={0} x2={28} y2={0} stroke={BG} strokeWidth={8} strokeLinecap="round" />
+      <line x1={0}   y1={0} x2={0}  y2={28} stroke={BG} strokeWidth={8} strokeLinecap="round" />
       <line x1={-28} y1={0} x2={28} y2={0} stroke={s} strokeWidth={3} strokeLinecap="round" />
       <line x1={0}   y1={0} x2={0}  y2={28} stroke={s} strokeWidth={3} strokeLinecap="round" />
       <circle r={4} fill={s} />
@@ -184,6 +187,8 @@ function ElbowSymbol({ sel }) {
   const s = sel ? '#34d399' : '#10b981';
   return (
     <g>
+      {/* Заглушающий фоновый слой — перекрывает торцы труб под портом */}
+      <path d={`M -28,0 L 0,0 L 0,28`} fill="none" stroke={BG} strokeWidth={8} strokeLinecap="round" strokeLinejoin="round" />
       <path d={`M -28,0 L 0,0 L 0,28`} fill="none" stroke={s} strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" />
       <circle r={4} fill={s} />
     </g>
