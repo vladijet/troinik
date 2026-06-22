@@ -5,11 +5,12 @@
  */
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
-import { Play, BarChart2, Flame, RotateCcw, AlertCircle, Undo } from 'lucide-react';
+import { Play, BarChart2, RotateCcw, AlertCircle, Undo, PanelRightClose, PanelRightOpen, PanelLeftClose, PanelLeftOpen, Settings2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
 import GraphCanvas    from '@/components/pipe-calc/GraphCanvas';
 import GraphInspector from '@/components/pipe-calc/GraphInspector';
@@ -63,6 +64,8 @@ export default function PipeCalculator() {
   );
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
+  const [inspectorOpen, setInspectorOpen] = useState(true);
+  const [elementPanelOpen, setElementPanelOpen] = useState(true);
 
   // ─── История для Undo ──────────────────────────────────────────────────
   const { pushSnapshot, undo, canUndo } = useHistory();
@@ -282,65 +285,84 @@ export default function PipeCalculator() {
     <div className="h-screen flex flex-col" style={{ overflow: 'hidden', background: '#0f172a' }}>
 
       {/* Header */}
-      <header className="h-14 flex items-center gap-3 px-4 shrink-0"
+      <header className="h-12 flex items-center gap-2 px-3 shrink-0"
         style={{ background: '#0f172a', borderBottom: '1px solid #1e3a5f' }}>
 
+        {/* Логотип */}
         <div className="flex items-center gap-2 shrink-0">
-          <div className="flex flex-col gap-0.5 items-start">
-            <img src="https://media.base44.com/images/public/6a2273e3e4eb03727e3a6619/7c2fd97dc_logoTroinik.svg" alt="Troinik" className="h-6 object-contain self-start" />
-            <div className="text-[10px]" style={{ color: '#ffffff' }}>Расчет тройниковой системы отопления</div>
-          </div>
+          <img src="https://media.base44.com/images/public/6a2273e3e4eb03727e3a6619/7c2fd97dc_logoTroinik.svg" alt="Troinik" className="h-5 object-contain" />
+          <div className="hidden lg:block text-[10px]" style={{ color: '#475569' }}>Тройниковая система</div>
         </div>
 
-        <div className="h-6 w-px mx-1" style={{ background: '#1e3a5f' }} />
+        <div className="h-5 w-px mx-1 shrink-0" style={{ background: '#1e3a5f' }} />
 
-        <div className="flex items-center gap-2 text-xs">
-          <Label className="text-xs shrink-0" style={{ color: '#475569' }}>Трубы:</Label>
-          <Select value={globalParams.pipeType}
-            onValueChange={v => { setGlobalParams(p => ({ ...p, pipeType: v })); setResults(null); }}>
-            <SelectTrigger className="h-7 text-xs w-52"
-              style={{ background: '#1e293b', borderColor: '#1e3a5f', color: '#94a3b8' }}>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {Object.entries(PIPE_TYPES).map(([k, s]) => (
-                <SelectItem key={k} value={k} className="text-xs">{s.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        {/* Тип труб — всегда видим */}
+        <Select value={globalParams.pipeType}
+          onValueChange={v => { setGlobalParams(p => ({ ...p, pipeType: v })); setResults(null); }}>
+          <SelectTrigger className="h-7 text-xs w-36 shrink-0"
+            style={{ background: '#1e293b', borderColor: '#1e3a5f', color: '#94a3b8' }}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {Object.entries(PIPE_TYPES).map(([k, s]) => (
+              <SelectItem key={k} value={k} className="text-xs">{s.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
 
-          <Label className="text-xs shrink-0" style={{ color: '#475569' }}>Подача °C:</Label>
-          <Input type="number" value={globalParams.tSupply}
-            onChange={e => setGlobalParams(p => ({ ...p, tSupply: +e.target.value }))}
-            className="h-7 w-14 text-xs"
-            style={{ background: '#1e293b', borderColor: '#1e3a5f', color: '#94a3b8' }} />
-
-          <Label className="text-xs shrink-0" style={{ color: '#475569' }}>Обратка °C:</Label>
-          <Input type="number" value={globalParams.tReturn}
-            onChange={e => setGlobalParams(p => ({ ...p, tReturn: +e.target.value }))}
-            className="h-7 w-14 text-xs"
-            style={{ background: '#1e293b', borderColor: '#1e3a5f', color: '#94a3b8' }} />
-
-          <Label className="text-xs shrink-0" style={{ color: '#475569' }}>Воздух °C:</Label>
-          <Input type="number" value={globalParams.tAir}
-            onChange={e => setGlobalParams(p => ({ ...p, tAir: +e.target.value }))}
-            className="h-7 w-14 text-xs"
-            style={{ background: '#1e293b', borderColor: '#1e3a5f', color: '#94a3b8' }} />
-
-          <div className="flex items-center gap-1 px-2 h-7 rounded text-xs font-bold"
-            style={{ background: '#1e293b', border: '1px solid #1e3a5f', color: '#34d399' }}>
-            Δt = {deltaT}°C
-          </div>
+        {/* Δt — всегда видим */}
+        <div className="flex items-center gap-1 px-2 h-7 rounded text-xs font-bold shrink-0"
+          style={{ background: '#1e293b', border: '1px solid #1e3a5f', color: '#34d399' }}>
+          Δt={deltaT}°C
         </div>
 
-        <div className="ml-auto flex items-center gap-2">
+        {/* Параметры температур — в Popover на малых экранах */}
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant="ghost" size="sm" className="h-7 px-2 gap-1 text-xs shrink-0"
+              style={{ color: '#64748b', border: '1px solid #1e3a5f', background: '#1e293b' }}>
+              <Settings2 className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Температуры</span>
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-64 p-3" style={{ background: '#0f172a', border: '1px solid #1e3a5f' }}>
+            <div className="space-y-2">
+              <p className="text-xs font-semibold" style={{ color: '#475569' }}>Параметры системы</p>
+              <div className="flex items-center gap-2">
+                <Label className="text-xs w-24 shrink-0" style={{ color: '#475569' }}>Подача °C</Label>
+                <Input type="number" value={globalParams.tSupply}
+                  onChange={e => setGlobalParams(p => ({ ...p, tSupply: +e.target.value }))}
+                  className="h-7 text-xs flex-1"
+                  style={{ background: '#1e293b', borderColor: '#1e3a5f', color: '#94a3b8' }} />
+              </div>
+              <div className="flex items-center gap-2">
+                <Label className="text-xs w-24 shrink-0" style={{ color: '#475569' }}>Обратка °C</Label>
+                <Input type="number" value={globalParams.tReturn}
+                  onChange={e => setGlobalParams(p => ({ ...p, tReturn: +e.target.value }))}
+                  className="h-7 text-xs flex-1"
+                  style={{ background: '#1e293b', borderColor: '#1e3a5f', color: '#94a3b8' }} />
+              </div>
+              <div className="flex items-center gap-2">
+                <Label className="text-xs w-24 shrink-0" style={{ color: '#475569' }}>Воздух °C</Label>
+                <Input type="number" value={globalParams.tAir}
+                  onChange={e => setGlobalParams(p => ({ ...p, tAir: +e.target.value }))}
+                  className="h-7 text-xs flex-1"
+                  style={{ background: '#1e293b', borderColor: '#1e3a5f', color: '#94a3b8' }} />
+              </div>
+            </div>
+          </PopoverContent>
+        </Popover>
+
+        <div className="ml-auto flex items-center gap-1.5">
           <Button variant="ghost" size="sm" onClick={handleUndo} disabled={!canUndo}
-            className="gap-1 text-xs h-8" style={{ color: canUndo ? '#94a3b8' : '#334155' }}>
-            <Undo className="w-3.5 h-3.5" /> Отменить
+            className="gap-1 text-xs h-7 px-2" style={{ color: canUndo ? '#94a3b8' : '#334155' }}>
+            <Undo className="w-3.5 h-3.5" />
+            <span className="hidden md:inline">Отменить</span>
           </Button>
           <Button variant="ghost" size="sm" onClick={handleReset}
-            className="gap-1 text-xs h-8" style={{ color: '#64748b' }}>
-            <RotateCcw className="w-3.5 h-3.5" /> Сбросить
+            className="gap-1 text-xs h-7 px-2" style={{ color: '#64748b' }}>
+            <RotateCcw className="w-3.5 h-3.5" />
+            <span className="hidden md:inline">Сбросить</span>
           </Button>
           {results && (
             <>
@@ -351,19 +373,36 @@ export default function PipeCalculator() {
                     border: `1px solid ${pumpSummary.systemDpOk ? '#14532d' : '#7f1d1d'}`,
                     color: pumpSummary.systemDpOk ? '#34d399' : '#f87171',
                   }}>
-                  ΔP = {(pumpSummary.systemDp / 1000).toFixed(1)} кПа
+                  ΔP={( pumpSummary.systemDp / 1000).toFixed(1)}кПа
                   {pumpSummary.systemDpOk ? ' ✓' : ' ⚠'}
                 </div>
               )}
               <Button variant="outline" size="sm" onClick={() => setShowResults(true)}
-                className="gap-1.5 text-xs h-8"
+                className="gap-1 text-xs h-7 px-2"
                 style={{ borderColor: '#1e3a5f', color: '#34d399', background: '#0a1929' }}>
-                <BarChart2 className="w-3.5 h-3.5" /> Результат расчёта
+                <BarChart2 className="w-3.5 h-3.5" />
+                <span className="hidden lg:inline">Результат</span>
               </Button>
             </>
           )}
-          <Button onClick={handleCalculate} size="sm" className="gap-1.5 text-xs h-8">
+          <Button onClick={handleCalculate} size="sm" className="gap-1 text-xs h-7 px-3">
             <Play className="w-3.5 h-3.5" /> Рассчитать
+          </Button>
+
+          <div className="h-5 w-px mx-0.5" style={{ background: '#1e3a5f' }} />
+
+          {/* Тоггл панели элементов */}
+          <Button variant="ghost" size="sm" onClick={() => setElementPanelOpen(v => !v)}
+            className="h-7 w-7 p-0" title={elementPanelOpen ? 'Скрыть панель элементов' : 'Показать панель элементов'}
+            style={{ color: '#475569' }}>
+            {elementPanelOpen ? <PanelLeftClose className="w-4 h-4" /> : <PanelLeftOpen className="w-4 h-4" />}
+          </Button>
+
+          {/* Тоггл инспектора */}
+          <Button variant="ghost" size="sm" onClick={() => setInspectorOpen(v => !v)}
+            className="h-7 w-7 p-0" title={inspectorOpen ? 'Скрыть инспектор' : 'Показать инспектор'}
+            style={{ color: '#475569' }}>
+            {inspectorOpen ? <PanelRightClose className="w-4 h-4" /> : <PanelRightOpen className="w-4 h-4" />}
           </Button>
         </div>
       </header>
@@ -436,7 +475,7 @@ export default function PipeCalculator() {
       </button>
 
       <div className="flex flex-1 overflow-hidden">
-        <ElementPanel onAddElement={handleAddElement} />
+        {elementPanelOpen && <ElementPanel onAddElement={handleAddElement} />}
 
         <div className="flex-1 relative overflow-hidden"
           onKeyDown={e => { if (e.key === 'Escape') setPendingPort(null); }}
@@ -471,21 +510,23 @@ export default function PipeCalculator() {
           />
         </div>
 
-        <div className="w-64 overflow-y-auto shrink-0"
-          style={{ background: '#0f172a', borderLeft: '1px solid #1e3a5f' }}>
-          <GraphInspector
-            selected={selectedId}
-            nodes={nodes}
-            edges={edges}
-            results={results}
-            deltaT={deltaT}
-            onUpdateNode={handleUpdateNode}
-            onDeleteNode={handleDelete}
-            onRotate={handleRotate}
-            onUpdateEdge={handleUpdateEdge}
-            onDeleteEdge={handleDelete}
-          />
-        </div>
+        {inspectorOpen && (
+          <div className="w-56 xl:w-64 overflow-y-auto shrink-0"
+            style={{ background: '#0f172a', borderLeft: '1px solid #1e3a5f' }}>
+            <GraphInspector
+              selected={selectedId}
+              nodes={nodes}
+              edges={edges}
+              results={results}
+              deltaT={deltaT}
+              onUpdateNode={handleUpdateNode}
+              onDeleteNode={handleDelete}
+              onRotate={handleRotate}
+              onUpdateEdge={handleUpdateEdge}
+              onDeleteEdge={handleDelete}
+            />
+          </div>
+        )}
       </div>
     </div>
   );
