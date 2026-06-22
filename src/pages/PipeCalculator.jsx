@@ -212,10 +212,8 @@ export default function PipeCalculator() {
       // Удаляем ребро
       setEdges(prev => prev.filter(e => e.id !== id));
     } else {
-      // Удаляем узел + все рёбра, где он участвует (каскадно, через живые узлы)
-      const survivingIds = new Set(nodes.map(n => n.id));
-      survivingIds.delete(id);
-      setEdges(prev => prev.filter(e => survivingIds.has(e.fromNodeId) && survivingIds.has(e.toNodeId)));
+      // Удаляем узел + все рёбра, где он участвует
+      setEdges(prev => prev.filter(e => e.fromNodeId !== id && e.toNodeId !== id));
       setNodes(prev => prev.filter(n => n.id !== id));
     }
     setSelectedId(null);
