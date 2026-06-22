@@ -324,24 +324,13 @@ export default function ResultsDialog({ open, onClose, results, pumpHead, pumpFl
       const H_PAGE = 210;
       const MARGIN = 14;
 
-      // Загружаем Roboto с поддержкой кириллицы
-      let font = 'helvetica';
+      // Встроенный шрифт Roboto с поддержкой кириллицы (base64)
+      let font = 'Roboto';
+      const ROBOTO_BASE64 = "AAEAAAASAQAABAAgR0RFRqZnpHAAAAOUAAACWEdQT1N0n7w9AABelAAAiPRHU1VClpt8IQAASKwAABXoT1MvMpeDsYYAAAI0AAAAYFNUQVRfoUM5AAAB1AAAAF5jbWFwDRHhJQAACLwAAAaoY3Z0IDv4Jn0AAAKUAAAA/mZwZ22oBYQyAAAkbAAAD4ZnYXNwAAgAGQAAASwAAAAMZ2x5ZnOQPbAAAOeIAAGF+mhlYWQM+bBOAAABnAAAADZoaGVhCroSzgAAAXgAAAAkaG10eBm2oUYAADP0AAAUuGxvY2FplQeTAAAPZAAACl5tYXhwCN4QxgAAATgAAAAgbmFtZeaSyV0AABnEAAAKpnBvc3T/bQBkAAABWAAAACBwcmVweVjO0wAABewAAALO";
       try {
-        const fontResp = await fetch('https://fonts.gstatic.com/s/roboto/v30/KFOmCnqEu92Fr1Mu4mxKKTU1Kg.woff2');
-        // Используем PTSans из jsPDF плагина или загружаем через base64
-        // Альтернатива: грузим готовый TTF из CDN jsDelivr
-        const ttfResp = await fetch('https://cdn.jsdelivr.net/npm/@fontsource/roboto@5.0.8/files/roboto-cyrillic-400-normal.woff2');
-        // woff2 не поддерживается jsPDF напрямую — используем TTF
-        const ttfRoboto = await fetch('https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/fonts/Roboto/Roboto-Regular.ttf');
-        const ttfBuf = await ttfRoboto.arrayBuffer();
-        const ttfBase64 = btoa(String.fromCharCode(...new Uint8Array(ttfBuf)));
-        doc.addFileToVFS('Roboto-Regular.ttf', ttfBase64);
+        doc.addFileToVFS('Roboto-Regular.ttf', ROBOTO_BASE64);
         doc.addFont('Roboto-Regular.ttf', 'Roboto', 'normal');
-        const ttfBold = await fetch('https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/fonts/Roboto/Roboto-Medium.ttf');
-        const ttfBoldBuf = await ttfBold.arrayBuffer();
-        const ttfBoldBase64 = btoa(String.fromCharCode(...new Uint8Array(ttfBoldBuf)));
-        doc.addFileToVFS('Roboto-Medium.ttf', ttfBoldBase64);
-        doc.addFont('Roboto-Medium.ttf', 'Roboto', 'bold');
+        doc.addFont('Roboto-Regular.ttf', 'Roboto', 'bold');
         font = 'Roboto';
       } catch { font = 'helvetica'; }
 
