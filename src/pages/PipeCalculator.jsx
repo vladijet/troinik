@@ -130,7 +130,10 @@ export default function PipeCalculator() {
   // ─── Клик по порту: режим соединения или заглушка ───────────────────────────
   const handlePortClick = useCallback((nodeId, portId) => {
     const key = `${nodeId}:${portId}`;
-    const occupiedPorts = new Set(edges.flatMap(e => [
+    // Фильтруем только «живые» рёбра (оба узла существуют) — защита от битых ссылок после удаления
+    const nodeIds = new Set(nodes.map(n => n.id));
+    const liveEdges = edges.filter(e => nodeIds.has(e.fromNodeId) && nodeIds.has(e.toNodeId));
+    const occupiedPorts = new Set(liveEdges.flatMap(e => [
       `${e.fromNodeId}:${e.fromPortId}`, `${e.toNodeId}:${e.toPortId}`,
     ]));
 
@@ -205,18 +208,21 @@ export default function PipeCalculator() {
   const handleDelete = useCallback((id) => {
     if (!id || id === 'pump-0') return;
     pushSnapshot(snapshot());
-    // Ребро?
     if (edges.find(e => e.id === id)) {
+      // Удаляем ребро
       setEdges(prev => prev.filter(e => e.id !== id));
     } else {
-      // Узел: удаляем и все связанные рёбра
-      setEdges(prev => prev.filter(e => e.fromNodeId !== id && e.toNodeId !== id));
+      // Удаляем узел + все рёбра, где он участвует (каскадно, через живые узлы)
+      const survivingIds = new Set(nodes.map(n => n.id));
+      survivingIds.delete(id);
+      setEdges(prev => prev.filter(e => survivingIds.has(e.fromNodeId) && survivingIds.has(e.toNodeId)));
       setNodes(prev => prev.filter(n => n.id !== id));
     }
     setSelectedId(null);
+    setPendingPort(null);
     setResults(null);
     setValidation(null);
-  }, [edges, pushSnapshot, snapshot]);
+  }, [edges, nodes, pushSnapshot, snapshot]);
 
   // ─── Поворот ────────────────────────────────────────────────────────────
   const handleRotate = useCallback((id) => {
