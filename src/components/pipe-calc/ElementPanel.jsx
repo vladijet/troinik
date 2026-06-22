@@ -19,11 +19,11 @@ const ITEMS = [
     type: 'elbow', label: 'Угол 90°',
     svg: (
       <svg viewBox="-32 -20 60 56" width={44} height={48}>
-        <path d="M -28,0 L 0,0 L 0,28" fill="none" stroke="#f59e0b" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" />
-        <circle r={4} fill="#f59e0b" />
-        <circle cx={-28} cy={0}  r={3.5} fill="#fbbf24" />
-        <circle cx={0}   cy={28} r={3.5} fill="#fbbf24" />
-        <text x={6} y={-8} fontSize={8} fill="#78350f">90°</text>
+        <path d="M -28,0 L 0,0 L 0,28" fill="none" stroke="#10b981" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" />
+        <circle r={4} fill="#10b981" />
+        <circle cx={-28} cy={0}  r={3.5} fill="#4ade80" />
+        <circle cx={0}   cy={28} r={3.5} fill="#4ade80" />
+        <text x={6} y={-8} fontSize={8} fill="#64748b">90°</text>
       </svg>
     ),
   },

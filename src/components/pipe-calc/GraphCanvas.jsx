@@ -221,7 +221,7 @@ function PortDot({ px, py, portId, nodeId, nodeType, isOpen, isError, isCapped, 
     : isCapped ? '#475569'
     : isFree ? '#4ade80'
     : '#1e3a5f';
-  const r = isFree ? (isPending || hover ? 7 : 6) : 4;
+  const r = isFree ? (isPending || hover ? 7 : 6) : 6;
 
   return (
     <g transform={`translate(${px},${py})`}
@@ -593,7 +593,7 @@ const GraphCanvas = forwardRef(function GraphCanvas({
             return Object.entries(config).map(([pid, p]) => {
               const px = node.x + (p.x * cos - p.y * sin);
               const py = node.y + (p.x * sin + p.y * cos);
-              return <circle key={`${node.id}-${pid}`} cx={px} cy={py} r={5} fill="black" />;
+              return <circle key={`${node.id}-${pid}`} cx={px} cy={py} r={6} fill="black" />;
             });
           })}
         </mask>
