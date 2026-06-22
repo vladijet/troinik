@@ -283,7 +283,7 @@ function sectionTitle(doc, text, y, W, font) {
   doc.setFont(font, 'bold');
   doc.setFontSize(11);
   doc.setTextColor(30, 58, 95);
-  doc.text(text, 14, y);
+  doc.text(toAscii(text), 14, y);
   hLine(doc, y + 2, W);
   return y + 8;
 }
@@ -293,10 +293,10 @@ function tableRow(doc, label, value, y, W, font, labelColor, valueColor) {
   doc.setFont(font, 'normal');
   doc.setFontSize(9);
   doc.setTextColor(...(labelColor || [71, 85, 105]));
-  doc.text(label, 18, y);
+  doc.text(toAscii(String(label ?? '')), 18, y);
   doc.setFont(font, 'bold');
   doc.setTextColor(...(valueColor || [30, 41, 59]));
-  doc.text(value, W - 14, y, { align: 'right' });
+  doc.text(toAscii(String(value ?? '')), W - 14, y, { align: 'right' });
   doc.setFont(font, 'normal');
   return y + 5.5;
 }
@@ -324,15 +324,10 @@ export default function ResultsDialog({ open, onClose, results, pumpHead, pumpFl
       const H_PAGE = 210;
       const MARGIN = 14;
 
-      // Встроенный шрифт Roboto с поддержкой кириллицы (base64)
-      let font = 'Roboto';
-      const ROBOTO_BASE64 = "AAEAAAASAQAABAAgR0RFRqZnpHAAAAOUAAACWEdQT1N0n7w9AABelAAAiPRHU1VClpt8IQAASKwAABXoT1MvMpeDsYYAAAI0AAAAYFNUQVRfoUM5AAAB1AAAAF5jbWFwDRHhJQAACLwAAAaoY3Z0IDv4Jn0AAAKUAAAA/mZwZ22oBYQyAAAkbAAAD4ZnYXNwAAgAGQAAASwAAAAMZ2x5ZnOQPbAAAOeIAAGF+mhlYWQM+bBOAAABnAAAADZoaGVhCroSzgAAAXgAAAAkaG10eBm2oUYAADP0AAAUuGxvY2FplQeTAAAPZAAACl5tYXhwCN4QxgAAATgAAAAgbmFtZeaSyV0AABnEAAAKpnBvc3T/bQBkAAABWAAAACBwcmVweVjO0wAABewAAALO";
-      try {
-        doc.addFileToVFS('Roboto-Regular.ttf', ROBOTO_BASE64);
-        doc.addFont('Roboto-Regular.ttf', 'Roboto', 'normal');
-        doc.addFont('Roboto-Regular.ttf', 'Roboto', 'bold');
-        font = 'Roboto';
-      } catch { font = 'helvetica'; }
+      // Используем helvetica + транслитерация для PDF (кириллица через toAscii)
+      const font = 'helvetica';
+      // Обёртка: все тексты транслитерируем перед передачей в jsPDF
+      const t = (str) => typeof str === 'string' ? toAscii(str) : String(str ?? '');
 
       // ══════════════════════════════════════════════════════════════════════
       // СТРАНИЦА 1 — Схема отопления
@@ -382,7 +377,8 @@ export default function ResultsDialog({ open, onClose, results, pumpHead, pumpFl
         doc.setFont(font, 'normal');
         doc.setFontSize(8);
         doc.setTextColor(100, 116, 139);
-        doc.text(`Дата: ${new Date().toLocaleDateString('ru-RU')}`, MARGIN, 16);
+        doc.text(`Data: ${new Date().toLocaleDateString('ru-RU')}`, MARGIN, 16);
+
 
         // Вписываем схему полностью на страницу с сохранением пропорций
         const availW = W - MARGIN * 2;
@@ -407,7 +403,7 @@ export default function ResultsDialog({ open, onClose, results, pumpHead, pumpFl
       doc.setFont(font, 'bold');
       doc.setFontSize(13);
       doc.setTextColor(30, 58, 95);
-      doc.text('Тройник | Гидравлический расчёт', MARGIN, y);
+      doc.text(t('Тройник | Гидравлический расчёт'), MARGIN, y);
       y += 8;
 
       // Две колонки: левая — параметры системы, правая — насос
@@ -418,11 +414,11 @@ export default function ResultsDialog({ open, onClose, results, pumpHead, pumpFl
       doc.setFont(font, 'bold');
       doc.setFontSize(10);
       doc.setTextColor(30, 58, 95);
-      doc.text('Параметры системы', MARGIN, y);
+      doc.text(t('Параметры системы'), MARGIN, y);
       doc.line(MARGIN, y + 2, MARGIN + colW, y + 2);
 
       // Правая: Параметры насоса
-      doc.text('Параметры насоса', col2X, y);
+      doc.text(t('Параметры насоса'), col2X, y);
       doc.line(col2X, y + 2, col2X + colW, y + 2);
       y += 8;
 
@@ -442,18 +438,18 @@ export default function ResultsDialog({ open, onClose, results, pumpHead, pumpFl
       const rowH = 5.5;
       sysRows.forEach(([lbl, val]) => {
         doc.setFont(font, 'normal'); doc.setFontSize(9); doc.setTextColor(71, 85, 105);
-        doc.text(lbl, MARGIN + 2, y);
+        doc.text(t(lbl), MARGIN + 2, y);
         doc.setFont(font, 'bold'); doc.setTextColor(30, 41, 59);
-        doc.text(val, MARGIN + colW, y, { align: 'right' });
+        doc.text(t(val), MARGIN + colW, y, { align: 'right' });
         y += rowH;
       });
 
       let y2 = y - sysRows.length * rowH;
       pumpRows.forEach(([lbl, val]) => {
         doc.setFont(font, 'normal'); doc.setFontSize(9); doc.setTextColor(71, 85, 105);
-        doc.text(lbl, col2X + 2, y2);
+        doc.text(t(lbl), col2X + 2, y2);
         doc.setFont(font, 'bold'); doc.setTextColor(30, 41, 59);
-        doc.text(val, col2X + colW, y2, { align: 'right' });
+        doc.text(t(val), col2X + colW, y2, { align: 'right' });
         y2 += rowH;
       });
 
@@ -501,11 +497,11 @@ export default function ResultsDialog({ open, onClose, results, pumpHead, pumpFl
         if (y > H_PAGE - 16) { doc.addPage(); y = 14; }
         const name = item.name;
         const unit = item.unit;
-        const nameLines = doc.splitTextToSize(name, W - MARGIN * 2 - 50);
+        const nameLines = doc.splitTextToSize(toAscii(name), W - MARGIN * 2 - 50);
         doc.setFont(font, 'normal'); doc.setFontSize(9); doc.setTextColor(71, 85, 105);
         doc.text(nameLines, 18, y);
         doc.setFont(font, 'bold'); doc.setTextColor(30, 41, 59);
-        doc.text(`${item.qty} ${unit}`, W - MARGIN, y, { align: 'right' });
+        doc.text(`${item.qty} ${toAscii(unit)}`, W - MARGIN, y, { align: 'right' });
         y += 5.5 * nameLines.length;
       });
 
@@ -516,11 +512,11 @@ export default function ResultsDialog({ open, onClose, results, pumpHead, pumpFl
         if (y > H_PAGE - 30) { doc.addPage(); y = 14; }
         y = sectionTitle(doc, 'Рекомендуемый насос Shinhoo', y, W, font);
         doc.setFont(font, 'bold'); doc.setFontSize(11); doc.setTextColor(59, 130, 246);
-        doc.text(recommended.model, 18, y); y += 6;
+        doc.text(toAscii(recommended.model), 18, y); y += 6;
         doc.setFont(font, 'normal'); doc.setFontSize(9); doc.setTextColor(71, 85, 105);
-        doc.text(recommended.desc, 18, y); y += 5;
-        doc.text(`Макс. напор: ${recommended.H_max} м  |  Макс. расход: ${recommended.Q_max} л/мин`, 18, y); y += 5;
-        doc.text(`Требуется (запас 1.2): H >= ${(H * 1.2).toFixed(1)} м, Q >= ${(Q * 1.2).toFixed(1)} л/мин`, 18, y); y += 5;
+        doc.text(toAscii(recommended.desc), 18, y); y += 5;
+        doc.text(t(`Maks. napor: ${recommended.H_max} m  |  Maks. rashod: ${recommended.Q_max} l/min`), 18, y); y += 5;
+        doc.text(t(`Trebuetsya (zapas 1.2): H >= ${(H * 1.2).toFixed(1)} m, Q >= ${(Q * 1.2).toFixed(1)} l/min`), 18, y); y += 5;
         doc.setTextColor(59, 130, 246);
         doc.text(recommended.url, 18, y);
       }
@@ -532,7 +528,7 @@ export default function ResultsDialog({ open, onClose, results, pumpHead, pumpFl
         doc.setFont(font, 'normal');
         doc.setFontSize(7);
         doc.setTextColor(100, 116, 139);
-        doc.text(`Страница ${i} из ${totalPages}`, W / 2, H_PAGE - 4, { align: 'center' });
+        doc.text(`Str. ${i} / ${totalPages}`, W / 2, H_PAGE - 4, { align: 'center' });
       }
 
       const now = new Date();
